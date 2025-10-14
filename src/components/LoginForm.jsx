@@ -85,7 +85,7 @@ function LoginForm() {
       style={{ background: "none" }}
     >
       <img
-        src="/img/fondo.jpg"
+        src="/public/fondo.jpg"
         alt="Fondo"
         className="absolute inset-0 w-full h-full object-cover opacity-100 -z-10"
         style={{ pointerEvents: "none", filter: "brightness(0.5)" }}
@@ -132,5 +132,6 @@ function LoginForm() {
     </div>
   );
 }
+
 
 export default LoginForm;
