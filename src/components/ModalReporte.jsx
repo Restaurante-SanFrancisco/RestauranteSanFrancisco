@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { toast } from "react-hot-toast";
-import { sanitizeText, sanitizeHtmlReportes, sanitizeNumber, sanitizeObject } from "../utils/sanitize"; // Importar funciones de sanitización
+import { sanitizeText, sanitizeHtmlReportes, sanitizeNumber, sanitizeObject } from "../utils/sanitize";
 
 export default function ModalReporte({ visible, onClose }) {
   const [pedidos, setPedidos] = useState([]);
@@ -21,7 +21,7 @@ export default function ModalReporte({ visible, onClose }) {
     return { fecha, hora: `${horas}:${minutos}:${segundos}` };
   };
 
-  // Función para formatear los items del pedido (sanitizada)
+  // Función para formatear los items del pedido
   const formatearDetalleItems = (items) => {
     try {
       if (!items) return "Sin detalles";
@@ -54,13 +54,13 @@ export default function ModalReporte({ visible, onClose }) {
     }
   };
 
-  // Función para mostrar el modal de detalle (sanitizada)
+  // Función para mostrar el modal de detalle
   const mostrarDetalle = (pedido) => {
     const pedidoLimpio = {
       ...pedido,
       id: sanitizeText(pedido.id),
       mesero: sanitizeText(pedido.mesero),
-      items: pedido.items // Se sanitiza al mostrarse en formatearDetalleItems
+      items: pedido.items
     };
     setModalDetalle({ visible: true, pedido: pedidoLimpio });
   };
@@ -69,63 +69,6 @@ export default function ModalReporte({ visible, onClose }) {
   const cerrarModalDetalle = () => {
     setModalDetalle({ visible: false, pedido: null });
   };
-  
-  useEffect(() => {
-    // Función para obtener usuario actual y su nombre (sanitizada)
-    const obtenerUsuarioActual = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: usuarioInfo } = await supabase
-            .from('infousuario')
-            .select('nombre')
-            .eq('id', user.id)
-            .single();
-
-          setMeseroActual(sanitizeText(usuarioInfo?.nombre || user.email || 'Mesero'));
-        }
-      } catch (error) {
-        console.error("Error obteniendo usuario:", error);
-        setMeseroActual('Sistema');
-      }
-    };
-
-    // Función para inicializar datos y suscripción
-    const inicializar = async () => {
-      if (visible) {
-        await obtenerUsuarioActual();
-        fetchDatos();
-
-        const channel = supabase
-          .channel("reporte-changes")
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "pedidos" },
-            () => fetchDatos()
-          )
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "pedidos_recargados" },
-            () => fetchDatos()
-          )
-          .subscribe();
-
-        return channel;
-      }
-    };
-
-    let channelRef;
-    inicializar().then((channel) => {
-      channelRef = channel;
-    });
-
-    // Cleanup al desmontar o cambiar visible
-    return () => {
-      if (channelRef) {
-        supabase.removeChannel(channelRef);
-      }
-    };
-  }, [visible]);
 
   const getTurnoRange = () => {
     const now = new Date();
@@ -134,14 +77,17 @@ export default function ModalReporte({ visible, onClose }) {
 
     let start, end;
     let turno = "";
+    let esCambioDeTurno = false;
 
     if (hour > 22 || (hour === 22 && minutes >= 1) || hour < 14 || (hour === 14 && minutes === 0)) {
       if (hour > 22 || (hour === 22 && minutes >= 1)) {
         start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 22, 1, 0);
         end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 14, 0, 0);
+        esCambioDeTurno = (hour === 22 && minutes === 1);
       } else {
         start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 22, 1, 0);
         end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 14, 0, 0);
+        esCambioDeTurno = (hour === 14 && minutes === 1);
       }
       turno = "AM ";
     } else {
@@ -150,9 +96,10 @@ export default function ModalReporte({ visible, onClose }) {
       turno = "PM ";
     }
 
-    return { start, end, turno };
+    return { start, end, turno, esCambioDeTurno };
   };
 
+  // Función para obtener datos de pedidos y recargados
   const fetchDatos = async () => {
     const { start, end } = getTurnoRange();
 
@@ -220,7 +167,6 @@ export default function ModalReporte({ visible, onClose }) {
         }
       });
 
-      // Sanitizar todos los pedidos
       const pedidosLimpios = (pedidosFiltrados || []).map(pedido => ({
         ...pedido,
         id: sanitizeText(pedido.id),
@@ -239,55 +185,25 @@ export default function ModalReporte({ visible, onClose }) {
     }
   };
 
-  if (!visible) return null;
-
-  // Calcular totales (sanitizados)
-  const calcularTotales = () => {
-    let totalEfectivo = 0;
-    let totalTarjeta = 0;
-    let totalRecargado = 0;
-    let totalEventos = 0;
-
-    pedidos.forEach(pedido => {
-      if (pedido.terminado) {
-        const totalLimpio = sanitizeNumber(pedido.total, true);
-        if (pedido.metodo_pago === 'efectivo') {
-          totalEfectivo += totalLimpio;
-        } else if (pedido.metodo_pago === 'tarjeta') {
-          totalTarjeta += totalLimpio;
-        } else if (pedido.metodo_pago === 'recargado') {
-          totalRecargado += totalLimpio;
-        } else if (pedido.metodo_pago === 'eventos') {
-          totalEventos += totalLimpio;
-        }
-      }
-    });
-
-    return { 
-      totalEfectivo: sanitizeNumber(totalEfectivo, true), 
-      totalTarjeta: sanitizeNumber(totalTarjeta, true), 
-      totalRecargado: sanitizeNumber(totalRecargado, true), 
-      totalEventos: sanitizeNumber(totalEventos, true) 
-    };
-  };
-
-  const { totalEfectivo, totalTarjeta, totalRecargado, totalEventos } = calcularTotales();
-  const { turno } = getTurnoRange();
-  const fechaActual = new Date(new Date().getTime() - (6 * 60 * 60 * 1000)).toLocaleDateString('es-GT');
-
-  const pedidosTerminados = pedidos.filter(pedido => pedido.terminado);
-
-  const enviarARecepcion = async () => {
+  // Función para enviar reporte a recepción
+const enviarARecepcion = async () => {
   setEnviando(true);
   try {
     const { fecha: fechaCorrecta, hora: horaCorrecta } = getFechaHoraGuatemala();
     
-    // Sanitizar todos los datos antes de crear el HTML
+    // ⬇️ CALCULAR turno DENTRO de la función
+    const { turno: turnoActual } = getTurnoRange();
+    
     const meseroLimpio = sanitizeText(meseroActual);
-    const turnoLimpio = sanitizeText(turno);
+    const turnoLimpio = sanitizeText(turnoActual); // ⬅️ Usar turnoActual aquí
     const fechaLimpia = sanitizeText(new Date().toLocaleDateString('es-GT'));
 
-    // Crear el reporte con HTML (NO sanitizar aún para mantener el formato)
+    // ⬇️ También necesitas calcular pedidosTerminados DENTRO de la función
+    const pedidosTerminadosActuales = pedidos.filter(pedido => pedido.terminado);
+    
+    // ⬇️ Y calcular totales DENTRO de la función
+    const { totalEfectivo, totalTarjeta, totalRecargado, totalEventos } = calcularTotalesDesdePedidos(pedidosTerminadosActuales);
+
     const reporteHTML = `
       <div style="background: linear-gradient(135deg, #000000ff 0%, #0d4922ff 80%); color: white; padding: 20px; border-radius: 10px;">
         <h2 style="text-align: center; font-size: 24px; font-weight: bold; color: #fbbf24; margin-bottom: 10px;">
@@ -304,7 +220,7 @@ export default function ModalReporte({ visible, onClose }) {
             <span style="font-weight: bold; color: #fbbf24;">Turno:</span> ${turnoLimpio}
           </div>
           <div style="background: #374151; padding: 10px; border-radius: 5px;">
-            <span style="font-weight: bold; color: #fbbf24;">Total Pedidos:</span> ${pedidosTerminados.length}
+            <span style="font-weight: bold; color: #fbbf24;">Total Pedidos:</span> ${pedidosTerminadosActuales.length}
           </div>
         </div>
         <table style="width: 100%; border-collapse: collapse; border: 1px solid #4b5563; font-size: 14px;">
@@ -320,7 +236,7 @@ export default function ModalReporte({ visible, onClose }) {
             </tr>
           </thead>
           <tbody>
-            ${pedidosTerminados.map(pedido => {
+            ${pedidosTerminadosActuales.map(pedido => {
               const infoRecargado = infoRecargados[pedido.id];
               const fueRecargado = !!infoRecargado;
               const idLimpio = sanitizeText(pedido.id);
@@ -366,7 +282,6 @@ export default function ModalReporte({ visible, onClose }) {
       </div>
     `;
 
-    // Sanitizar SOLO el HTML del reporte con la función permisiva
     const reporteHTMLSeguro = sanitizeHtmlReportes(reporteHTML);
 
     const reporteData = sanitizeObject({
@@ -376,23 +291,34 @@ export default function ModalReporte({ visible, onClose }) {
       total_tarjeta: Number(sanitizeNumber(totalTarjeta, true)),
       total_recargado: Number(sanitizeNumber(totalRecargado, true)),
       total_eventos: Number(sanitizeNumber(totalEventos, true)),
-      total_pedidos: pedidosTerminados.length,
-      datos_reportes: pedidosTerminados.map(pedido => ({
+      total_pedidos: pedidosTerminadosActuales.length,
+      datos_reportes: pedidosTerminadosActuales.map(pedido => ({
         ...pedido,
         items: typeof pedido.items === 'string' ? pedido.items : JSON.stringify(pedido.items)
       })),
       mesero_recepcionista: meseroLimpio,
-      reporte_html: reporteHTMLSeguro, // Usar el HTML sanitizado pero con formato
-      formato_especial: true
+      reporte_html: reporteHTMLSeguro,
+      formato_especial: true,
     });
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('reportes_enviados')
-      .insert([reporteData]);
+      .upsert([reporteData], {
+        onConflict: 'fecha,turno',
+        ignoreDuplicates: false
+      })
+      .select();
 
     if (error) throw error;
 
-    toast.success('✅ Reporte enviado correctamente a recepción');
+    const esActualizacion = data && data[0] && data[0].id;
+    
+    if (esActualizacion) {
+      toast.success('✅ Reporte actualizado correctamente en recepción');
+    } else {
+      toast.success('✅ Reporte enviado correctamente a recepción');
+    }
+
   } catch (error) {
     console.error('Error enviando reporte:', error);
     toast.error('❌ Error al enviar el reporte: ' + sanitizeText(error.message));
@@ -400,6 +326,145 @@ export default function ModalReporte({ visible, onClose }) {
     setEnviando(false);
   }
 };
+
+// ⬇️ Agrega esta función auxiliar para calcular totales
+const calcularTotalesDesdePedidos = (pedidosArray) => {
+  let totalEfectivo = 0;
+  let totalTarjeta = 0;
+  let totalRecargado = 0;
+  let totalEventos = 0;
+
+  pedidosArray.forEach(pedido => {
+    if (pedido.terminado) {
+      const totalLimpio = sanitizeNumber(pedido.total, true);
+      if (pedido.metodo_pago === 'efectivo') {
+        totalEfectivo += totalLimpio;
+      } else if (pedido.metodo_pago === 'tarjeta') {
+        totalTarjeta += totalLimpio;
+      } else if (pedido.metodo_pago === 'recargado') {
+        totalRecargado += totalLimpio;
+      } else if (pedido.metodo_pago === 'eventos') {
+        totalEventos += totalLimpio;
+      }
+    }
+  });
+
+  return { totalEfectivo, totalTarjeta, totalRecargado, totalEventos };
+};
+
+  // useEffect para suscripción a cambios
+  useEffect(() => {
+    const obtenerUsuarioActual = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: usuarioInfo } = await supabase
+            .from('infousuario')
+            .select('nombre')
+            .eq('id', user.id)
+            .single();
+
+          setMeseroActual(sanitizeText(usuarioInfo?.nombre || user.email || 'Mesero'));
+        }
+      } catch (error) {
+        console.error("Error obteniendo usuario:", error);
+        setMeseroActual('Sistema');
+      }
+    };
+
+    const inicializar = async () => {
+      if (visible) {
+        await obtenerUsuarioActual();
+        fetchDatos();
+
+        const channel = supabase
+          .channel("reporte-changes")
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "pedidos" },
+            () => fetchDatos()
+          )
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "pedidos_recargados" },
+            () => fetchDatos()
+          )
+          .subscribe();
+
+        return channel;
+      }
+    };
+
+    let channelRef;
+    inicializar().then((channel) => {
+      channelRef = channel;
+    });
+
+    return () => {
+      if (channelRef) {
+        supabase.removeChannel(channelRef);
+      }
+    };
+  }, [visible]);
+
+  // useEffect para guardado automático
+useEffect(() => {
+  const interval = setInterval(() => {
+    const now = new Date();
+    const hour = now.getHours();
+    const minutes = now.getMinutes();
+
+    if ((hour === 13 && minutes === 59) || (hour === 21 && minutes === 59)) {
+      // Verificar si hay pedidos antes de enviar
+      const pedidosTerminadosActuales = pedidos.filter(pedido => pedido.terminado);
+      
+      if (pedidosTerminadosActuales.length > 0) {
+        enviarARecepcion();
+      } else {
+      }
+    }
+  }, 60 * 1000);
+  return () => clearInterval(interval);
+}, [pedidos]); 
+
+  // Calcular totales
+  const calcularTotales = () => {
+    let totalEfectivo = 0;
+    let totalTarjeta = 0;
+    let totalRecargado = 0;
+    let totalEventos = 0;
+
+    pedidos.forEach(pedido => {
+      if (pedido.terminado) {
+        const totalLimpio = sanitizeNumber(pedido.total, true);
+        if (pedido.metodo_pago === 'efectivo') {
+          totalEfectivo += totalLimpio;
+        } else if (pedido.metodo_pago === 'tarjeta') {
+          totalTarjeta += totalLimpio;
+        } else if (pedido.metodo_pago === 'recargado') {
+          totalRecargado += totalLimpio;
+        } else if (pedido.metodo_pago === 'eventos') {
+          totalEventos += totalLimpio;
+        }
+      }
+    });
+
+    return { 
+      totalEfectivo: sanitizeNumber(totalEfectivo, true), 
+      totalTarjeta: sanitizeNumber(totalTarjeta, true), 
+      totalRecargado: sanitizeNumber(totalRecargado, true), 
+      totalEventos: sanitizeNumber(totalEventos, true) 
+    };
+  };
+
+  // ⬇️ TODOS LOS HOOKS DEBEN ESTAR ANTES DE ESTA LÍNEA ⬇️
+  if (!visible) return null;
+
+  // Cálculos que dependen de estados (después del return condicional)
+  const { totalEfectivo, totalTarjeta, totalRecargado, totalEventos } = calcularTotales();
+  const { turno } = getTurnoRange();
+  const fechaActual = new Date(new Date().getTime() - (6 * 60 * 60 * 1000)).toLocaleDateString('es-GT');
+  const pedidosTerminados = pedidos.filter(pedido => pedido.terminado);
 
   return (
     <>
