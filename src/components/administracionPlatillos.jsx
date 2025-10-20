@@ -51,9 +51,16 @@ export default function AdministracionPlatos() {
     let valorLimpio = value;
     
     if (field === 'nombre') {
-      valorLimpio = sanitizeText(value);
+      // NO sanitizar completamente en cada tecla: permitir espacios mientras escribe
+      valorLimpio = String(value || "");
     } else if (field === 'precio') {
-      valorLimpio = sanitizeNumber(value);
+      // Mantener como string durante la escritura pero eliminar caracteres no numéricos excepto punto
+      valorLimpio = String(value || "").replace(/[^0-9.]/g, '');
+      // Asegurar que haya como máximo un punto
+      const parts = valorLimpio.split('.');
+      if (parts.length > 2) {
+        valorLimpio = parts.shift() + '.' + parts.join('');
+      }
     } else if (field === 'categoria_id') {
       valorLimpio = value; // ID no necesita sanitización
     }
@@ -396,7 +403,8 @@ export default function AdministracionPlatos() {
       // ✅ Sanitizar datos antes de guardar
       const datosLimpios = {
         nombre: sanitizeText(form.nombre),
-        precio: Number(sanitizeNumber(form.precio)),
+        // convertir precio seguro a número
+        precio: Number(sanitizeNumber(form.precio, true)),
         categoria_id: form.categoria_id
       };
 
@@ -1000,6 +1008,7 @@ export default function AdministracionPlatos() {
                 className="rounded-xl bg-gray-900/50 border border-gray-700 text-white p-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 value={form.nombre}
                 onChange={(e) => handleFormChange('nombre', e.target.value)}
+                onBlur={() => setForm(prev => ({ ...prev, nombre: sanitizeText(prev.nombre) }))}
                 placeholder="Ej. Pizza Margarita"
               />
             </div>
@@ -1008,7 +1017,12 @@ export default function AdministracionPlatos() {
               <input
                 className="rounded-xl bg-gray-900/50 border border-gray-700 text-white p-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 value={form.precio}
-                onChange={(e) => handleFormChange('precio', sanitizeNumber(e.target.value))}
+                onChange={(e) => handleFormChange('precio', e.target.value)}
+                onBlur={() => {
+                  // Sanitizar/normalizar al perder foco: convertir a número con máximo 2 decimales
+                  const cleaned = sanitizeNumber(form.precio, true);
+                  setForm(prev => ({ ...prev, precio: cleaned === 0 && String(prev.precio).trim() === "" ? "" : String(cleaned.toFixed(2)) }));
+                }}
                 placeholder="Ej. 85.00"
                 inputMode="decimal"
               />
@@ -1463,7 +1477,7 @@ function RowPlatillo({ p, categoria, onEdit, onDelete, expanded, onToggle, fetch
           <td colSpan={4} className="p-4">
             {loading && (
               <div className="text-emerald-300 flex items-center">
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-emerald-300" fill="none" viewBox="0 0 24 24">
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-emerald-300" fill="none" viewBox="0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
