@@ -34,7 +34,7 @@ function ControlMesasModal({
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-6 mb-8">
-          {Array.from({ length: 20 }, (_, i) => (i + 1).toString()).map((num) => {
+          {Array.from({ length: 16 }, (_, i) => (i + 1).toString()).map((num) => {
             const ocupada = Boolean(mesas[`Mesa ${num}`]);
             return (
               <div
@@ -151,5 +151,6 @@ function ControlMesasModal({
     </div>
   );
 }
+
 
 export default ControlMesasModal;
