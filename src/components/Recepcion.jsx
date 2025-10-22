@@ -405,7 +405,7 @@ function Recepcion() {
 
       if (deleteError) throw deleteError;
 
-      setMensajeLimpio(`Pedido ${pedidoRecargadoId} cobrado con ${metodoPago}.`);
+      setMensajeLimpio(`Pedido ${pedidoRecargado.pedido_id} cobrado con ${metodoPago}.`);
       setTimeout(() => setMensaje(""), 2000);
     } catch (error) {
       console.error("Error al cobrar pedido:", error);
@@ -1048,3 +1048,4 @@ function Recepcion() {
 }
 
 export default Recepcion;
+
