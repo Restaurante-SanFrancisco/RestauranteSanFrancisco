@@ -375,7 +375,7 @@ function MeseroPanel() {
         toast.success(`Pedido agregado a ${destino} (pedido existente)`);
       }
     } else {
-      // ✅ CREAR NUEVO PEDIDO (código original)
+      // CREAR NUEVO PEDIDO
       const { data: pedido, error: pedidoError } = await supabase
         .from('pedidos')
         .insert([{
@@ -523,6 +523,31 @@ function MeseroPanel() {
 
       if (pedidoError) throw pedidoError;
 
+            // 5. Si se facturará, crear registro en tabla facturas
+      if (datosPago?.facturar && datosPago?.nit) {
+      const { data: pedidoCompleto, error: pedidoError } = await supabase
+        .from("pedidos")
+        .select("*")
+        .eq("id", pedidoId)
+        .single();
+
+      if (pedidoError) throw pedidoError;
+
+      // Crear registro en la tabla facturas
+      const { error: facturaError } = await supabase
+        .from("facturas")
+        .insert([{
+          pedido_id: pedidoId,
+          nit: sanitizeText(datosPago.nit),
+          total: pedidoCompleto.total,
+          detalle_pedido: pedidoCompleto.items,
+          facturado: false,
+          fecha: fecha
+        }]);
+
+      if (facturaError) throw facturaError;
+    }
+      
       // 6. Actualizar estado local (eliminar mesa)
       setMesas((prev) => {
         const nuevasMesas = { ...prev };
@@ -747,3 +772,4 @@ function MeseroPanel() {
 }
 
 export default MeseroPanel;
+
