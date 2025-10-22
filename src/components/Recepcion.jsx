@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { toast } from "react-hot-toast";
-import { sanitizeText, sanitizeHtmlReportes } from "../utils/sanitize"; // ✅ Importación añadida
+import { sanitizeText, sanitizeHtmlReportes } from "../utils/sanitize";
 
 function Recepcion() {
   const navigate = useNavigate();
@@ -14,26 +14,23 @@ function Recepcion() {
   const [cargando, setCargando] = useState(true);
   const [usuarioRecepcion, setUsuarioRecepcion] = useState(null);
   const [idReporte, setIdReporte] = useState("");
-  const [modalDetalleReporte, setModalDetalleReporte] = useState({ 
+  const [modalDetalleReporte, setModalDetalleReporte] = ({ 
     visible: false, 
     pedido: null, 
     anim: "in" 
   });
-  const [filtroHabitacion, setFiltroHabitacion] = useState(""); // Nuevo estado para filtro
+  const [filtroHabitacion, setFiltroHabitacion] = useState("");
 
-  // ✅ Handler sanitizado para idReporte
   const handleIdReporteChange = (e) => {
     const valorLimpio = sanitizeText(e.target.value);
     setIdReporte(valorLimpio);
   };
 
-  // ✅ Handler sanitizado para mensaje (si se usa en otros lugares)
   const setMensajeLimpio = (mensaje) => {
     const mensajeLimpio = sanitizeText(mensaje);
     setMensaje(mensajeLimpio);
   };
 
-  // Función para obtener fecha y hora de Guatemala
   const getFechaHoraGuatemala = () => {
     const ahora = new Date();
     const ahoraGT = new Date(ahora.getTime() - (6 * 60 * 60 * 1000));
@@ -44,7 +41,6 @@ function Recepcion() {
     return { fecha, hora: `${horas}:${minutos}:${segundos}` };
   };
 
-  // Obtener información del usuario recepcionista
   useEffect(() => {
     const obtenerUsuario = async () => {
       try {
@@ -56,7 +52,6 @@ function Recepcion() {
             .eq('id', user.id)
             .single();
           
-          // ✅ Sanitizar nombre de usuario
           const nombreLimpio = usuarioInfo?.nombre ? sanitizeText(usuarioInfo.nombre) : "Recepcionista";
           setUsuarioRecepcion(nombreLimpio);
         }
@@ -69,12 +64,12 @@ function Recepcion() {
     obtenerUsuario();
   }, []);
 
-  // Cargar pedidos desde Supabase
+  // Cargar pedidos desde Supabase - MODIFICADO
   const cargarPedidos = async () => {
     try {
       setCargando(true);
 
-      // Cargar pedidos recargados
+      // Cargar pedidos recargados - MODIFICADO
       const { data: recargosData, error: recargosError } = await supabase
         .from("pedidos_recargados")
         .select(`
@@ -89,16 +84,17 @@ function Recepcion() {
       if (recargosError) throw recargosError;
 
       const recargosFormateados = recargosData.map((item) => ({
-        id: item.pedido_id,
+        id: item.pedido_id, // ✅ CAMBIO: Mostrar pedido_id en lugar del id
         pedido_id: item.pedido_id,
-        habitacion: sanitizeText(item.habitacion), // ✅ Sanitizado
+        habitacion: sanitizeText(item.habitacion),
         total: item.total,
-        mesero: sanitizeText(item.mesero), // ✅ Sanitizado
+        mesero: sanitizeText(item.mesero),
         detalle: item.detalle_pedido,
         tipo: "recargado",
+        id_original: item.id // ✅ Guardar el id original para operaciones
       }));
 
-      // Cargar facturas
+      // Cargar facturas - MODIFICADO
       const { data: facturasData, error: facturasError } = await supabase
         .from("facturas")
         .select(`
@@ -114,13 +110,14 @@ function Recepcion() {
       if (facturasError) throw facturasError;
 
       const facturasFormateadas = facturasData.map((item) => ({
-        id: item.id,
+        id: item.pedido_id, // ✅ CAMBIO: Mostrar pedido_id en lugar del id
         pedido_id: item.pedido_id,
         total: item.total,
-        nit: sanitizeText(item.nit), // ✅ Sanitizado
+        nit: sanitizeText(item.nit),
         detalle: item.detalle_pedido,
         fecha: item.fecha,
         tipo: "factura",
+        id_original: item.id // ✅ Guardar el id original para operaciones
       }));
 
       setPedidosRecargados(recargosFormateados);
@@ -140,11 +137,9 @@ function Recepcion() {
         .from("reportes_enviados")
         .select("*");
 
-      // Si hay filtro por ID
       if (filtroId) {
         query = query.eq("id", filtroId);
       } else {
-        // Mostrar solo el último reporte por created_at si no hay filtro
         query = query.order("created_at", { ascending: false }).limit(1);
       }
 
@@ -237,19 +232,17 @@ function Recepcion() {
     
     ventanaImpresion.document.close();
     
-    // Esperar a que se cargue el contenido antes de imprimir
     setTimeout(() => {
       ventanaImpresion.print();
-      // ventanaImpresion.close(); // Opcional: cerrar después de imprimir
     }, 250);
   };
 
-  // Configurar suscripciones en tiempo real
+  // Configurar suscripciones en tiempo real - MODIFICADO
   useEffect(() => {
     cargarPedidos();
     fetchReportes();
 
-    // Suscribirse a cambios en pedidos_recargados
+    // Suscribirse a cambios en pedidos_recargados - MODIFICADO
     const subscriptionRecargados = supabase
       .channel('pedidos_recargados_changes')
       .on('postgres_changes', 
@@ -272,13 +265,14 @@ function Recepcion() {
             .then(({ data, error }) => {
               if (!error && data) {
                 const recargosFormateados = data.map((item) => ({
-                  id: item.id,
+                  id: item.pedido_id, // ✅ CAMBIO: Mostrar pedido_id en lugar del id
                   pedido_id: item.pedido_id,
-                  habitacion: sanitizeText(item.habitacion), // ✅ Sanitizado
+                  habitacion: sanitizeText(item.habitacion),
                   total: item.total,
-                  mesero: sanitizeText(item.mesero), // ✅ Sanitizado
+                  mesero: sanitizeText(item.mesero),
                   detalle: item.detalle_pedido,
                   tipo: "recargado",
+                  id_original: item.id // ✅ Guardar el id original
                 }));
                 setPedidosRecargados(recargosFormateados);
               }
@@ -287,7 +281,7 @@ function Recepcion() {
       )
       .subscribe();
 
-    // Suscribirse a cambios en facturas
+    // Suscribirse a cambios en facturas - MODIFICADO
     const subscriptionFacturas = supabase
       .channel('facturas_changes')
       .on('postgres_changes', 
@@ -311,13 +305,14 @@ function Recepcion() {
             .then(({ data, error }) => {
               if (!error && data) {
                 const facturasFormateadas = data.map((item) => ({
-                  id: item.id,
+                  id: item.pedido_id, // ✅ CAMBIO: Mostrar pedido_id en lugar del id
                   pedido_id: item.pedido_id,
                   total: item.total,
-                  nit: sanitizeText(item.nit), // ✅ Sanitizado
+                  nit: sanitizeText(item.nit),
                   detalle: item.detalle_pedido,
                   fecha: item.fecha,
                   tipo: "factura",
+                  id_original: item.id // ✅ Guardar el id original
                 }));
                 setPedidosFacturar(facturasFormateadas);
               }
@@ -326,14 +321,12 @@ function Recepcion() {
       )
       .subscribe();
 
-    // Suscripción en tiempo real para reportes
     const channelReportes = supabase
       .channel('reportes-changes')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'reportes_enviados' },
         () => {
-          // Si hay un filtro activo, mantenerlo
           if (idReporte) {
             handleBuscarPorId();
           } else {
@@ -343,7 +336,6 @@ function Recepcion() {
       )
       .subscribe();
 
-    // Limpiar suscripciones al desmontar el componente
     return () => {
       supabase.removeChannel(subscriptionRecargados);
       supabase.removeChannel(subscriptionFacturas);
@@ -362,16 +354,17 @@ function Recepcion() {
     setTimeout(() => setModalDetalle({ visible: false, pedido: null, anim: "in" }), 300);
   };
 
-  // Función para cobrar pedido recargado (CON FECHA GT)
-  const cobrarPedido = async (pedidoRecargadoId, metodoPago) => {
+  // Función para cobrar pedido recargado - MODIFICADO
+  const cobrarPedido = async (pedidoId, metodoPago) => {
     try {
+      // Buscar por pedido_id en lugar del id interno
       const { data: pedidoRecargado, error: errorRecargado } = await supabase
         .from("pedidos_recargados")
         .select(`
           *,
           pedidos (*)
         `)
-        .eq("pedido_id", pedidoRecargadoId)
+        .eq("pedido_id", pedidoId) // ✅ CAMBIO: buscar por pedido_id
         .single();
 
       if (errorRecargado) throw errorRecargado;
@@ -381,31 +374,31 @@ function Recepcion() {
       }
 
       const pedidoOriginal = pedidoRecargado.pedidos;
-      // Usar fecha y hora de Guatemala
       const { fecha, hora } = getFechaHoraGuatemala();
 
       const { error: updateError } = await supabase
         .from("pedidos")
         .update({
           terminado: true,
-          metodo_pago: sanitizeText(metodoPago), // ✅ Sanitizado
-          numero: sanitizeText(pedidoRecargado.habitacion), // ✅ Sanitizado
+          metodo_pago: sanitizeText(metodoPago),
+          numero: sanitizeText(pedidoRecargado.habitacion),
           fecha: fecha,
           hora: hora,
-          mesero: `${sanitizeText(pedidoRecargado.mesero)}/${usuarioRecepcion}` // ✅ Sanitizado
+          mesero: `${sanitizeText(pedidoRecargado.mesero)}/${usuarioRecepcion}`
         })
         .eq("id", pedidoOriginal.id);
 
       if (updateError) throw updateError;
 
+      // Eliminar por el id original de pedidos_recargados
       const { error: deleteError } = await supabase
         .from("pedidos_recargados")
         .delete()
-        .eq("id", pedidoRecargadoId);
+        .eq("id", pedidoRecargado.id); // ✅ Usar el id interno para eliminar
 
       if (deleteError) throw deleteError;
 
-      setMensajeLimpio(`Pedido ${pedidoRecargadoId} cobrado con ${metodoPago}.`);
+      setMensajeLimpio(`Pedido ${pedidoId} cobrado con ${metodoPago}.`);
       setTimeout(() => setMensaje(""), 2000);
     } catch (error) {
       console.error("Error al cobrar pedido:", error);
@@ -413,23 +406,32 @@ function Recepcion() {
     }
   };
 
-  // Función para marcar factura como facturada (CON FECHA GT)
-  const facturarPedido = async (id) => {
+  // Función para marcar factura como facturada - MODIFICADO
+  const facturarPedido = async (pedidoId) => {
     try {
-      // Usar fecha de Guatemala
       const { fecha } = getFechaHoraGuatemala();
 
+      // Buscar la factura por pedido_id
+      const { data: factura, error: findError } = await supabase
+        .from("facturas")
+        .select("id")
+        .eq("pedido_id", pedidoId)
+        .single();
+
+      if (findError) throw findError;
+
+      // Actualizar usando el id interno de la factura
       const { error } = await supabase
         .from("facturas")
         .update({ 
           facturado: true, 
           fecha: fecha
         })
-        .eq("id", id);
+        .eq("id", factura.id); // ✅ Usar el id interno de la factura
 
       if (error) throw error;
 
-      setMensajeLimpio(`Factura ${id} marcada como facturada.`);
+      setMensajeLimpio(`Factura del pedido ${pedidoId} marcada como facturada.`);
       setTimeout(() => setMensaje(""), 2000);
     } catch (error) {
       console.error("Error al facturar:", error);
@@ -451,28 +453,25 @@ function Recepcion() {
     try {
       if (!detalle) return "Sin detalles";
 
-      // Si viene como string, intentamos parsearlo
       if (typeof detalle === "string") {
         try {
           detalle = JSON.parse(detalle);
         } catch {
-          return sanitizeText(detalle); // ✅ Sanitizado si no se puede parsear
+          return sanitizeText(detalle);
         }
       }
 
-      // Si es array (ej. [{ nombre: "Pizza", cantidad: 2 }, ...])
       if (Array.isArray(detalle)) {
         return detalle
           .map((item) => `${sanitizeText(item.nombre) || "Producto"} x${item.cantidad || 1}`)
           .join("\n");
       }
 
-      // Si es objeto único
       if (typeof detalle === "object") {
         return `${sanitizeText(detalle.nombre) || "Producto"} x${detalle.cantidad || 1}`;
       }
 
-      return sanitizeText(detalle); // ✅ Sanitizado
+      return sanitizeText(detalle);
     } catch (e) {
       return "No se puede mostrar el detalle";
     }
@@ -497,12 +496,11 @@ function Recepcion() {
     return [];
   };
 
-  // Función para formatear items de pedido (similar a formatearDetalle pero para items)
+  // Función para formatear items de pedido
   const formatearItemsPedido = (items) => {
     try {
       if (!items) return "Sin items";
       let arr = items;
-      // Si es string, intenta parsear a array
       if (typeof arr === "string") {
         try {
           arr = JSON.parse(arr);
@@ -531,14 +529,13 @@ function Recepcion() {
     (p.habitacion && p.habitacion.toLowerCase().includes(filtroHabitacion.trim().toLowerCase()))
   );
 
-  // 1. Solicitar permiso de notificación
+  // Notificaciones
   useEffect(() => {
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
     }
   }, []);
 
-  // 2. Función para mostrar notificación
   function mostrarNotificacion(titulo, cuerpo) {
     if ("Notification" in window && Notification.permission === "granted") {
       new Notification(titulo, {
@@ -550,7 +547,6 @@ function Recepcion() {
     }
   }
 
-  // 3. Detectar nuevos pedidos recargados y facturas
   const prevRecargados = useRef(0);
   const prevFacturas = useRef(0);
 
@@ -601,7 +597,6 @@ function Recepcion() {
         <h1 className="text-3xl font-extrabold text-emerald-300 tracking-tight text-center drop-shadow-lg flex-1 text-center">
           Recepción - Control de Pedidos
         </h1>
-        {/* Botón Administrar Usuarios */}
         <button
           onClick={() => navigate("/usuarios")}
           className="flex items-center text-emerald-300 hover:text-white transition-colors"
@@ -680,7 +675,7 @@ function Recepcion() {
               <table className="w-full text-blue-900">
                 <thead>
                   <tr className="bg-blue-50 border-b">
-                    <th className="py-3 px-4 text-left font-semibold">ID Pedido</th>
+                    <th className="py-3 px-4 text-left font-semibold">ID Pedido</th> {/* ✅ CAMBIADO: De "ID" a "ID Pedido" */}
                     <th className="py-3 px-4 text-left font-semibold">Habitación</th>
                     <th className="py-3 px-4 text-left font-semibold">Mesero</th>
                     <th className="py-3 px-4 text-left font-semibold">Detalle</th>
@@ -691,9 +686,8 @@ function Recepcion() {
                 <tbody>
                   {pedidosRecargadosFiltrados.map((pedido) => (
                     <tr key={pedido.id} className="hover:bg-blue-100/40 transition">
-                      <td className="py-3 px-4">{pedido.pedido_id}</td>
+                      <td className="py-3 px-4">{pedido.id}</td> {/* ✅ AHORA MUESTRA pedido_id */}
                       <td className="py-3 px-4">{pedido.habitacion}</td>
-                      {/* Cambia aquí: muestra el mesero de pedidos_recargados */}
                       <td className="py-3 px-4">{pedido.mesero}</td>
                       <td className="py-3 px-4">
                         <button
@@ -738,8 +732,7 @@ function Recepcion() {
               <table className="w-full text-amber-900">
                 <thead>
                   <tr className="bg-amber-50 border-b">
-                    <th className="py-3 px-4 text-left font-semibold">ID Factura</th>
-                    <th className="py-3 px-4 text-left font-semibold">ID Pedido</th>
+                    <th className="py-3 px-4 text-left font-semibold">ID Pedido</th> {/* ✅ CAMBIADO: De "ID Factura" a "ID Pedido" */}
                     <th className="py-3 px-4 text-left font-semibold">Detalle</th>
                     <th className="py-3 px-4 text-left font-semibold">Total</th>
                     <th className="py-3 px-4 text-left font-semibold">NIT</th>
@@ -749,8 +742,7 @@ function Recepcion() {
                 <tbody>
                   {pedidosFacturar.map((pedido) => (
                     <tr key={pedido.id} className="hover:bg-amber-100/40 transition">
-                      <td className="py-3 px-4">{pedido.id}</td>
-                      <td className="py-3 px-4">{pedido.pedido_id}</td>
+                      <td className="py-3 px-4">{pedido.id}</td> {/* ✅ AHORA MUESTRA pedido_id */}
                       <td className="py-3 px-4">
                         <button
                           className="bg-emerald-500 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg shadow transition text-sm"
@@ -777,10 +769,10 @@ function Recepcion() {
           </div>
         </section>
 
+        {/* El resto del código permanece igual */}
         <div className="mb-6 mt-12">
           <h3 className="text-xl font-bold mb-3 text-white">📊 Reportes Recibidos</h3>
           
-          {/* Filtro por ID único de texto */}
           <div className="mb-4 flex items-center gap-4 flex-wrap">
             <label htmlFor="idReporte" className="text-white font-medium">
               Buscar por ID de Reporte:
@@ -789,7 +781,7 @@ function Recepcion() {
               type="text"
               id="idReporte"
               value={idReporte}
-              onChange={handleIdReporteChange} // ✅ Handler sanitizado
+              onChange={handleIdReporteChange}
               className="px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               placeholder="Ingresa el ID del reporte"
             />
@@ -827,7 +819,6 @@ function Recepcion() {
                     </span>
                   </div>
 
-                  {/* BOTÓN IMPRIMIR CON ICONO DE IMPRESORA Y TOOLTIP */}
                   <div className="mb-4 flex justify-end">
                     <div className="relative group">
                       <button
@@ -835,7 +826,6 @@ function Recepcion() {
                         onClick={() => imprimirReporte(reporte.id)}
                         title="Imprimir reporte"
                       >
-                        {/* Icono de impresora */}
                         <svg 
                           xmlns="http://www.w3.org/2000/svg" 
                           className="h-5 w-5" 
@@ -851,17 +841,15 @@ function Recepcion() {
                           />
                         </svg>
                       </button>
-                      {/* Tooltip que aparece al pasar el mouse */}
                       <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                         Imprimir
                       </span>
                     </div>
                   </div>
 
-                  {/* CONTENIDO DEL REPORTE PARA IMPRIMIR */}
                   <div id={`reporte-impresion-${reporte.id}`}>
                     {reporte.formato_especial && reporte.reporte_html ? (
-                      <div dangerouslySetInnerHTML={{ __html: sanitizeHtmlReportes(reporte.reporte_html) }} />  // ✅ Sanitizado
+                      <div dangerouslySetInnerHTML={{ __html: sanitizeHtmlReportes(reporte.reporte_html) }} />
                     ) : (
                       <>
                         <div className="text-center mb-6">
@@ -1048,6 +1036,4 @@ function Recepcion() {
   );
 }
 
-
 export default Recepcion;
-
