@@ -680,7 +680,7 @@ function Recepcion() {
               <table className="w-full text-blue-900">
                 <thead>
                   <tr className="bg-blue-50 border-b">
-                    <th className="py-3 px-4 text-left font-semibold">ID</th>
+                    <th className="py-3 px-4 text-left font-semibold">ID Pedido</th>
                     <th className="py-3 px-4 text-left font-semibold">Habitación</th>
                     <th className="py-3 px-4 text-left font-semibold">Mesero</th>
                     <th className="py-3 px-4 text-left font-semibold">Detalle</th>
@@ -691,7 +691,7 @@ function Recepcion() {
                 <tbody>
                   {pedidosRecargadosFiltrados.map((pedido) => (
                     <tr key={pedido.id} className="hover:bg-blue-100/40 transition">
-                      <td className="py-3 px-4">{pedido.id}</td>
+                      <td className="py-3 px-4">{pedido.pedido_id}</td>
                       <td className="py-3 px-4">{pedido.habitacion}</td>
                       {/* Cambia aquí: muestra el mesero de pedidos_recargados */}
                       <td className="py-3 px-4">{pedido.mesero}</td>
@@ -1050,3 +1050,4 @@ function Recepcion() {
 
 
 export default Recepcion;
+
