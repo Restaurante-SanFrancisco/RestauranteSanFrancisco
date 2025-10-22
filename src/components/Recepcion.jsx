@@ -89,7 +89,7 @@ function Recepcion() {
       if (recargosError) throw recargosError;
 
       const recargosFormateados = recargosData.map((item) => ({
-        id: item.id,
+        id: item.pedido_id,
         pedido_id: item.pedido_id,
         habitacion: sanitizeText(item.habitacion), // ✅ Sanitizado
         total: item.total,
@@ -371,7 +371,7 @@ function Recepcion() {
           *,
           pedidos (*)
         `)
-        .eq("id", pedidoRecargadoId)
+        .eq("pedido_id", pedidoRecargadoId)
         .single();
 
       if (errorRecargado) throw errorRecargado;
@@ -1047,5 +1047,6 @@ function Recepcion() {
     </div>
   );
 }
+
 
 export default Recepcion;
