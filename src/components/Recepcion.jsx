@@ -2,11 +2,12 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { toast } from "react-hot-toast";
-import { sanitizeText, sanitizeHtmlReportes } from "../utils/sanitize"; // ✅ Importación añadida
+import { sanitizeText, sanitizeHtmlReportes } from "../utils/sanitize";
 
 function Recepcion() {
   const navigate = useNavigate();
   const [pedidosRecargados, setPedidosRecargados] = useState([]);
+  const [empleadosRecargados, setEmpleadosRecargados] = useState([]);
   const [pedidosFacturar, setPedidosFacturar] = useState([]);
   const [modalDetalle, setModalDetalle] = useState({ visible: false, pedido: null, anim: "in" });
   const [reportesRecibidos, setReportesRecibidos] = useState([]);
@@ -19,21 +20,18 @@ function Recepcion() {
     pedido: null, 
     anim: "in" 
   });
-  const [filtroHabitacion, setFiltroHabitacion] = useState(""); // Nuevo estado para filtro
+  const [filtroHabitacion, setFiltroHabitacion] = useState("");
+  const [filtroEmpleado, setFiltroEmpleado] = useState("");
 
-  // ✅ Handler sanitizado para idReporte
   const handleIdReporteChange = (e) => {
     const valorLimpio = sanitizeText(e.target.value);
     setIdReporte(valorLimpio);
   };
 
-  // ✅ Handler sanitizado para mensaje (si se usa en otros lugares)
-  const setMensajeLimpio = (mensaje) => {
-    const mensajeLimpio = sanitizeText(mensaje);
-    setMensaje(mensajeLimpio);
+  const handleFiltroEmpleado = (e) => {
+    setFiltroEmpleado(sanitizeText(e.target.value));
   };
 
-  // Función para obtener fecha y hora de Guatemala
   const getFechaHoraGuatemala = () => {
     const ahora = new Date();
     const ahoraGT = new Date(ahora.getTime() - (6 * 60 * 60 * 1000));
@@ -44,7 +42,6 @@ function Recepcion() {
     return { fecha, hora: `${horas}:${minutos}:${segundos}` };
   };
 
-  // Obtener información del usuario recepcionista
   useEffect(() => {
     const obtenerUsuario = async () => {
       try {
@@ -56,7 +53,6 @@ function Recepcion() {
             .eq('id', user.id)
             .single();
           
-          // ✅ Sanitizar nombre de usuario
           const nombreLimpio = usuarioInfo?.nombre ? sanitizeText(usuarioInfo.nombre) : "Recepcionista";
           setUsuarioRecepcion(nombreLimpio);
         }
@@ -69,12 +65,11 @@ function Recepcion() {
     obtenerUsuario();
   }, []);
 
-  // Cargar pedidos desde Supabase
   const cargarPedidos = async () => {
     try {
       setCargando(true);
 
-      // Cargar pedidos recargados
+      // Cargar pedidos recargados (HABITACIONES) - CORREGIDO
       const { data: recargosData, error: recargosError } = await supabase
         .from("pedidos_recargados")
         .select(`
@@ -83,7 +78,8 @@ function Recepcion() {
           detalle_pedido,
           mesero,
           total,
-          pedido_id
+          pedido_id,
+          fecha
         `);
 
       if (recargosError) throw recargosError;
@@ -91,11 +87,38 @@ function Recepcion() {
       const recargosFormateados = recargosData.map((item) => ({
         id: item.id,
         pedido_id: item.pedido_id,
-        habitacion: sanitizeText(item.habitacion), // ✅ Sanitizado
+        habitacion: sanitizeText(item.habitacion),
         total: item.total,
-        mesero: sanitizeText(item.mesero), // ✅ Sanitizado
+        mesero: sanitizeText(item.mesero),
         detalle: item.detalle_pedido,
+        fecha: item.fecha,
         tipo: "recargado",
+      }));
+
+      // Cargar empleados recargados
+      const { data: empleadosData, error: empleadosError } = await supabase
+        .from("empleados_recargados")
+        .select(`
+          id,
+          empleado,
+          detalle_pedido,
+          mesero,
+          total,
+          pedido_id,
+          fecha
+        `);
+
+      if (empleadosError) throw empleadosError;
+
+      const empleadosFormateados = empleadosData.map((item) => ({
+        id: item.id,
+        pedido_id: item.pedido_id,
+        empleado: sanitizeText(item.empleado),
+        total: item.total,
+        mesero: sanitizeText(item.mesero),
+        detalle: item.detalle_pedido,
+        fecha: item.fecha,
+        tipo: "empleado_recargado",
       }));
 
       // Cargar facturas
@@ -117,13 +140,14 @@ function Recepcion() {
         id: item.id,
         pedido_id: item.pedido_id,
         total: item.total,
-        nit: sanitizeText(item.nit), // ✅ Sanitizado
+        nit: sanitizeText(item.nit),
         detalle: item.detalle_pedido,
         fecha: item.fecha,
         tipo: "factura",
       }));
 
       setPedidosRecargados(recargosFormateados);
+      setEmpleadosRecargados(empleadosFormateados);
       setPedidosFacturar(facturasFormateadas);
     } catch (error) {
       console.error("Error cargando pedidos:", error);
@@ -133,18 +157,17 @@ function Recepcion() {
     }
   };
 
-  // Función para cargar reportes - por ID en lugar de fecha
+  // ... (el resto de las funciones permanecen igual)
+
   const fetchReportes = async (filtroId = null) => {
     try {
       let query = supabase
         .from("reportes_enviados")
         .select("*");
 
-      // Si hay filtro por ID
       if (filtroId) {
         query = query.eq("id", filtroId);
       } else {
-        // Mostrar solo el último reporte por created_at si no hay filtro
         query = query.order("created_at", { ascending: false }).limit(1);
       }
 
@@ -160,7 +183,6 @@ function Recepcion() {
     }
   };
 
-  // Manejo de búsqueda por ID
   const handleBuscarPorId = () => {
     if (!idReporte.trim()) {
       toast("Por favor ingresa un ID de reporte");
@@ -175,7 +197,6 @@ function Recepcion() {
     fetchReportes();
   };
 
-  // Función para imprimir reporte
   const imprimirReporte = (reporteId) => {
     const elementoImpresion = document.getElementById(`reporte-impresion-${reporteId}`);
     
@@ -237,19 +258,15 @@ function Recepcion() {
     
     ventanaImpresion.document.close();
     
-    // Esperar a que se cargue el contenido antes de imprimir
     setTimeout(() => {
       ventanaImpresion.print();
-      // ventanaImpresion.close(); // Opcional: cerrar después de imprimir
     }, 250);
   };
 
-  // Configurar suscripciones en tiempo real
   useEffect(() => {
     cargarPedidos();
     fetchReportes();
 
-    // Suscribirse a cambios en pedidos_recargados
     const subscriptionRecargados = supabase
       .channel('pedidos_recargados_changes')
       .on('postgres_changes', 
@@ -267,17 +284,19 @@ function Recepcion() {
               detalle_pedido,
               mesero,
               total,
-              pedido_id
+              pedido_id,
+              fecha
             `)
             .then(({ data, error }) => {
               if (!error && data) {
                 const recargosFormateados = data.map((item) => ({
                   id: item.id,
                   pedido_id: item.pedido_id,
-                  habitacion: sanitizeText(item.habitacion), // ✅ Sanitizado
+                  habitacion: sanitizeText(item.habitacion),
                   total: item.total,
-                  mesero: sanitizeText(item.mesero), // ✅ Sanitizado
+                  mesero: sanitizeText(item.mesero),
                   detalle: item.detalle_pedido,
+                  fecha: item.fecha,
                   tipo: "recargado",
                 }));
                 setPedidosRecargados(recargosFormateados);
@@ -287,7 +306,45 @@ function Recepcion() {
       )
       .subscribe();
 
-    // Suscribirse a cambios en facturas
+    const subscriptionEmpleados = supabase
+      .channel('empleados_recargados_changes')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'empleados_recargados' 
+        }, 
+        () => {
+          supabase
+            .from("empleados_recargados")
+            .select(`
+              id,
+              empleado,
+              detalle_pedido,
+              mesero,
+              total,
+              pedido_id,
+              fecha
+            `)
+            .then(({ data, error }) => {
+              if (!error && data) {
+                const empleadosFormateados = data.map((item) => ({
+                  id: item.id,
+                  pedido_id: item.pedido_id,
+                  empleado: sanitizeText(item.empleado),
+                  total: item.total,
+                  mesero: sanitizeText(item.mesero),
+                  detalle: item.detalle_pedido,
+                  fecha: item.fecha,
+                  tipo: "empleado_recargado",
+                }));
+                setEmpleadosRecargados(empleadosFormateados);
+              }
+            });
+        }
+      )
+      .subscribe();
+
     const subscriptionFacturas = supabase
       .channel('facturas_changes')
       .on('postgres_changes', 
@@ -314,7 +371,7 @@ function Recepcion() {
                   id: item.id,
                   pedido_id: item.pedido_id,
                   total: item.total,
-                  nit: sanitizeText(item.nit), // ✅ Sanitizado
+                  nit: sanitizeText(item.nit),
                   detalle: item.detalle_pedido,
                   fecha: item.fecha,
                   tipo: "factura",
@@ -326,14 +383,12 @@ function Recepcion() {
       )
       .subscribe();
 
-    // Suscripción en tiempo real para reportes
     const channelReportes = supabase
       .channel('reportes-changes')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'reportes_enviados' },
         () => {
-          // Si hay un filtro activo, mantenerlo
           if (idReporte) {
             handleBuscarPorId();
           } else {
@@ -343,26 +398,23 @@ function Recepcion() {
       )
       .subscribe();
 
-    // Limpiar suscripciones al desmontar el componente
     return () => {
       supabase.removeChannel(subscriptionRecargados);
+      supabase.removeChannel(subscriptionEmpleados);
       supabase.removeChannel(subscriptionFacturas);
       supabase.removeChannel(channelReportes);
     };
   }, []);
 
-  // Función para mostrar el modal de detalle
   const mostrarDetalle = (pedido) => {
     setModalDetalle({ visible: true, pedido: pedido, anim: "in" });
   };
 
-  // Función para cerrar el modal de detalle con animación
   const cerrarModalDetalle = () => {
     setModalDetalle((prev) => ({ ...prev, anim: "out" }));
     setTimeout(() => setModalDetalle({ visible: false, pedido: null, anim: "in" }), 300);
   };
 
-  // Función para cobrar pedido recargado (CON FECHA GT)
   const cobrarPedido = async (pedidoRecargadoId, metodoPago) => {
     try {
       const { data: pedidoRecargado, error: errorRecargado } = await supabase
@@ -381,18 +433,17 @@ function Recepcion() {
       }
 
       const pedidoOriginal = pedidoRecargado.pedidos;
-      // Usar fecha y hora de Guatemala
       const { fecha, hora } = getFechaHoraGuatemala();
 
       const { error: updateError } = await supabase
         .from("pedidos")
         .update({
           terminado: true,
-          metodo_pago: sanitizeText(metodoPago), // ✅ Sanitizado
-          numero: sanitizeText(pedidoRecargado.habitacion), // ✅ Sanitizado
+          metodo_pago: sanitizeText(metodoPago),
+          numero: sanitizeText(pedidoRecargado.habitacion),
           fecha: fecha,
           hora: hora,
-          mesero: `${sanitizeText(pedidoRecargado.mesero)}/${usuarioRecepcion}` // ✅ Sanitizado
+          mesero: `${sanitizeText(pedidoRecargado.mesero)}/${usuarioRecepcion}`
         })
         .eq("id", pedidoOriginal.id);
 
@@ -405,7 +456,7 @@ function Recepcion() {
 
       if (deleteError) throw deleteError;
 
-      setMensajeLimpio(`Pedido ${pedidoRecargado.pedido_id} cobrado con ${metodoPago}.`);
+      setMensaje(`Pedido ${pedidoRecargado.pedido_id} cobrado con ${metodoPago}.`);
       setTimeout(() => setMensaje(""), 2000);
     } catch (error) {
       console.error("Error al cobrar pedido:", error);
@@ -413,10 +464,25 @@ function Recepcion() {
     }
   };
 
-  // Función para marcar factura como facturada (CON FECHA GT)
+  const cobrarPedidoEmpleado = async (empleadoRecargadoId) => {
+    try {
+      const { error: deleteError } = await supabase
+        .from("empleados_recargados")
+        .delete()
+        .eq("id", empleadoRecargadoId);
+
+      if (deleteError) throw deleteError;
+
+      setMensaje(`Pedido de empleado marcado como cobrado.`);
+      setTimeout(() => setMensaje(""), 2000);
+    } catch (error) {
+      console.error("Error al cobrar pedido de empleado:", error);
+      toast.error("Error al procesar el cobro: " + error.message);
+    }
+  };
+
   const facturarPedido = async (id) => {
     try {
-      // Usar fecha de Guatemala
       const { fecha } = getFechaHoraGuatemala();
 
       const { error } = await supabase
@@ -429,7 +495,7 @@ function Recepcion() {
 
       if (error) throw error;
 
-      setMensajeLimpio(`Factura ${id} marcada como facturada.`);
+      setMensaje(`Factura ${id} marcada como facturada.`);
       setTimeout(() => setMensaje(""), 2000);
     } catch (error) {
       console.error("Error al facturar:", error);
@@ -446,63 +512,47 @@ function Recepcion() {
     navigate("/");
   };
 
-  // Función para formatear el detalle del pedido
   const formatearDetalle = (detalle) => {
     try {
       if (!detalle) return "Sin detalles";
 
-      // Si viene como string, intentamos parsearlo
       if (typeof detalle === "string") {
         try {
           detalle = JSON.parse(detalle);
         } catch {
-          return sanitizeText(detalle); // ✅ Sanitizado si no se puede parsear
+          return sanitizeText(detalle);
         }
       }
 
-      // Si es array (ej. [{ nombre: "Pizza", cantidad: 2 }, ...])
       if (Array.isArray(detalle)) {
         return detalle
           .map((item) => `${sanitizeText(item.nombre) || "Producto"} x${item.cantidad || 1}`)
           .join("\n");
       }
 
-      // Si es objeto único
       if (typeof detalle === "object") {
         return `${sanitizeText(detalle.nombre) || "Producto"} x${detalle.cantidad || 1}`;
       }
 
-      return sanitizeText(detalle); // ✅ Sanitizado
+      return sanitizeText(detalle);
     } catch (e) {
       return "No se puede mostrar el detalle";
     }
   };
   
-  // Función para mostrar detalle de pedido en reporte
   const mostrarDetalleReporte = (pedido) => {
     setModalDetalleReporte({ visible: true, pedido: pedido, anim: "in" });
   };
 
-  // Función para cerrar el modal de detalle de reporte
   const cerrarModalDetalleReporte = () => {
     setModalDetalleReporte((prev) => ({ ...prev, anim: "out" }));
     setTimeout(() => setModalDetalleReporte({ visible: false, pedido: null, anim: "in" }), 300);
   };
 
-  // Función para extraer pedidos del reporte
-  const obtenerPedidosDeReporte = (reporte) => {
-    if (reporte.datos_reportes && Array.isArray(reporte.datos_reportes)) {
-      return reporte.datos_reportes;
-    }
-    return [];
-  };
-
-  // Función para formatear items de pedido (similar a formatearDetalle pero para items)
   const formatearItemsPedido = (items) => {
     try {
       if (!items) return "Sin items";
       let arr = items;
-      // Si es string, intenta parsear a array
       if (typeof arr === "string") {
         try {
           arr = JSON.parse(arr);
@@ -520,25 +570,26 @@ function Recepcion() {
     }
   };
 
-  // Handler para el filtro de habitación
   const handleFiltroHabitacion = (e) => {
     setFiltroHabitacion(sanitizeText(e.target.value));
   };
 
-  // Filtrar pedidos recargados por habitación
   const pedidosRecargadosFiltrados = pedidosRecargados.filter(p =>
     filtroHabitacion.trim() === "" ||
     (p.habitacion && p.habitacion.toLowerCase().includes(filtroHabitacion.trim().toLowerCase()))
   );
 
-  // 1. Solicitar permiso de notificación
+  const empleadosRecargadosFiltrados = empleadosRecargados.filter(p =>
+    filtroEmpleado.trim() === "" ||
+    (p.empleado && p.empleado.toLowerCase().includes(filtroEmpleado.trim().toLowerCase()))
+  );
+
   useEffect(() => {
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
     }
   }, []);
 
-  // 2. Función para mostrar notificación
   function mostrarNotificacion(titulo, cuerpo) {
     if ("Notification" in window && Notification.permission === "granted") {
       new Notification(titulo, {
@@ -550,8 +601,8 @@ function Recepcion() {
     }
   }
 
-  // 3. Detectar nuevos pedidos recargados y facturas
   const prevRecargados = useRef(0);
+  const prevEmpleados = useRef(0);
   const prevFacturas = useRef(0);
 
   useEffect(() => {
@@ -563,6 +614,16 @@ function Recepcion() {
     }
     prevRecargados.current = pedidosRecargados.length;
   }, [pedidosRecargados]);
+
+  useEffect(() => {
+    if (empleadosRecargados.length > prevEmpleados.current) {
+      mostrarNotificacion(
+        "Nuevo pedido de empleado",
+        "¡Hay un nuevo pedido de empleado pendiente de cobro!"
+      );
+    }
+    prevEmpleados.current = empleadosRecargados.length;
+  }, [empleadosRecargados]);
 
   useEffect(() => {
     if (pedidosFacturar.length > prevFacturas.current) {
@@ -601,7 +662,6 @@ function Recepcion() {
         <h1 className="text-3xl font-extrabold text-emerald-300 tracking-tight text-center drop-shadow-lg flex-1 text-center">
           Recepción - Control de Pedidos
         </h1>
-        {/* Botón Administrar Usuarios */}
         <button
           onClick={() => navigate("/usuarios")}
           className="flex items-center text-emerald-300 hover:text-white transition-colors"
@@ -646,12 +706,12 @@ function Recepcion() {
           </div>
         )}
 
+        {/* SECCIÓN PEDIDOS RECARGADOS (HABITACIONES) */}
         <section className="mb-12">
           <div className="flex items-center gap-3 mb-4">
             <span className="text-2xl text-blue-100">💳</span>
-            <h2 className="text-2xl font-bold text-white">Pedidos Recargados</h2>
+            <h2 className="text-2xl font-bold text-white">Pedidos Recargados (Habitaciones)</h2>
           </div>
-          {/* Recuadro de búsqueda por habitación */}
           <div className="mb-4 flex items-center gap-3">
             <label htmlFor="filtroHabitacion" className="text-blue-100 font-medium">
               Buscar por habitación:
@@ -682,6 +742,7 @@ function Recepcion() {
                   <tr className="bg-blue-50 border-b">
                     <th className="py-3 px-4 text-left font-semibold">ID Pedido</th>
                     <th className="py-3 px-4 text-left font-semibold">Habitación</th>
+                    <th className="py-3 px-4 text-left font-semibold">Fecha</th>
                     <th className="py-3 px-4 text-left font-semibold">Mesero</th>
                     <th className="py-3 px-4 text-left font-semibold">Detalle</th>
                     <th className="py-3 px-4 text-left font-semibold">Total</th>
@@ -693,6 +754,7 @@ function Recepcion() {
                     <tr key={pedido.id} className="hover:bg-blue-100/40 transition">
                       <td className="py-3 px-4">{pedido.pedido_id}</td>
                       <td className="py-3 px-4">{pedido.habitacion}</td>
+                      <td className="py-3 px-4">{pedido.fecha}</td>
                       <td className="py-3 px-4">{pedido.mesero}</td>
                       <td className="py-3 px-4">
                         <button
@@ -725,7 +787,8 @@ function Recepcion() {
           </div>
         </section>
 
-        <section>
+        {/* SECCIÓN PEDIDOS A FACTURAR */}
+        <section className="mb-12">
           <div className="flex items-center gap-3 mb-4">
             <span className="text-2xl text-amber-100">🧾</span>
             <h2 className="text-2xl font-bold text-white">Pedidos a Facturar</h2>
@@ -776,10 +839,10 @@ function Recepcion() {
           </div>
         </section>
 
-        <div className="mb-6 mt-12">
+        {/* SECCIÓN REPORTES RECIBIDOS */}
+        <section className="mb-12">
           <h3 className="text-xl font-bold mb-3 text-white">📊 Reportes Recibidos</h3>
           
-          {/* Filtro por ID único de texto */}
           <div className="mb-4 flex items-center gap-4 flex-wrap">
             <label htmlFor="idReporte" className="text-white font-medium">
               Buscar por ID de Reporte:
@@ -788,7 +851,7 @@ function Recepcion() {
               type="text"
               id="idReporte"
               value={idReporte}
-              onChange={handleIdReporteChange} // ✅ Handler sanitizado
+              onChange={handleIdReporteChange}
               className="px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               placeholder="Ingresa el ID del reporte"
             />
@@ -826,7 +889,6 @@ function Recepcion() {
                     </span>
                   </div>
 
-                  {/* BOTÓN IMPRIMIR CON ICONO DE IMPRESORA Y TOOLTIP */}
                   <div className="mb-4 flex justify-end">
                     <div className="relative group">
                       <button
@@ -834,7 +896,6 @@ function Recepcion() {
                         onClick={() => imprimirReporte(reporte.id)}
                         title="Imprimir reporte"
                       >
-                        {/* Icono de impresora */}
                         <svg 
                           xmlns="http://www.w3.org/2000/svg" 
                           className="h-5 w-5" 
@@ -850,17 +911,15 @@ function Recepcion() {
                           />
                         </svg>
                       </button>
-                      {/* Tooltip que aparece al pasar el mouse */}
                       <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                         Imprimir
                       </span>
                     </div>
                   </div>
 
-                  {/* CONTENIDO DEL REPORTE PARA IMPRIMIR */}
                   <div id={`reporte-impresion-${reporte.id}`}>
                     {reporte.formato_especial && reporte.reporte_html ? (
-                      <div dangerouslySetInnerHTML={{ __html: sanitizeHtmlReportes(reporte.reporte_html) }} />  // ✅ Sanitizado
+                      <div dangerouslySetInnerHTML={{ __html: sanitizeHtmlReportes(reporte.reporte_html) }} />
                     ) : (
                       <>
                         <div className="text-center mb-6">
@@ -922,10 +981,85 @@ function Recepcion() {
               ))}
             </div>
           )}
-        </div>
+        </section>
+
+        {/* ✅ NUEVA SECCIÓN: EMPLEADOS RECARGADOS - AHORA AL FINAL */}
+        <section className="mb-12">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-2xl text-purple-100">👥</span>
+            <h2 className="text-2xl font-bold text-white">Empleados Recargados</h2>
+          </div>
+          <div className="mb-4 flex items-center gap-3">
+            <label htmlFor="filtroEmpleado" className="text-purple-100 font-medium">
+              Buscar por empleado:
+            </label>
+            <input
+              id="filtroEmpleado"
+              type="text"
+              value={filtroEmpleado}
+              onChange={handleFiltroEmpleado}
+              placeholder="Ej: Juan Pérez"
+              className="px-3 py-2 rounded-lg border border-purple-200 focus:outline-none focus:ring-2 focus:ring-purple-400"
+            />
+            {filtroEmpleado && (
+              <button
+                onClick={() => setFiltroEmpleado("")}
+                className="ml-2 px-3 py-2 rounded bg-gray-400 text-white hover:bg-gray-600"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+          <div className="bg-white/80 rounded-2xl shadow border border-purple-100 p-0 overflow-x-auto animate-slide-in-left">
+            {empleadosRecargadosFiltrados.length === 0 ? (
+              <p className="text-purple-400 text-center py-10">No hay pedidos de empleados pendientes de cobro.</p>
+            ) : (
+              <table className="w-full text-purple-900">
+                <thead>
+                  <tr className="bg-purple-50 border-b">
+                    <th className="py-3 px-4 text-left font-semibold">ID Pedido</th>
+                    <th className="py-3 px-4 text-left font-semibold">Empleado</th>
+                    <th className="py-3 px-4 text-left font-semibold">Fecha</th>
+                    <th className="py-3 px-4 text-left font-semibold">Mesero</th>
+                    <th className="py-3 px-4 text-left font-semibold">Total</th>
+                    <th className="py-3 px-4 text-left font-semibold">Detalle</th>
+                    <th className="py-3 px-4 text-left font-semibold">Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {empleadosRecargadosFiltrados.map((pedido) => (
+                    <tr key={pedido.id} className="hover:bg-purple-100/40 transition">
+                      <td className="py-3 px-4">{pedido.pedido_id}</td>
+                      <td className="py-3 px-4">{pedido.empleado}</td>
+                      <td className="py-3 px-4">{pedido.fecha}</td>
+                      <td className="py-3 px-4">{pedido.mesero}</td>
+                      <td className="py-3 px-4 font-bold">Q {pedido.total.toFixed(2)}</td>
+                      <td className="py-3 px-4">
+                        <button
+                          className="bg-emerald-500 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg shadow transition text-sm"
+                          onClick={() => mostrarDetalle(pedido)}
+                        >
+                          Ver detalle
+                        </button>
+                      </td>
+                      <td className="py-3 px-4">
+                        <button
+                          className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1 rounded-lg shadow transition text-sm"
+                          onClick={() => cobrarPedidoEmpleado(pedido.id)}
+                        >
+                          Cobrado
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </section>
       </main>
 
-      {/* Modal Detalle Reporte */}
+      {/* Los modales permanecen igual */}
       {modalDetalleReporte.visible && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div
@@ -982,7 +1116,6 @@ function Recepcion() {
         </div>
       )}
 
-      {/* Modal Detalle Pedido */}
       {modalDetalle.visible && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div
@@ -1006,6 +1139,17 @@ function Recepcion() {
               <>
                 <div className="mb-4">
                   <span className="font-semibold">Habitación:</span> {modalDetalle.pedido.habitacion}
+                </div>
+                <div className="mb-4">
+                  <span className="font-semibold">Mesero:</span> {modalDetalle.pedido.mesero}
+                </div>
+              </>
+            )}
+
+            {modalDetalle.pedido.tipo === "empleado_recargado" && (
+              <>
+                <div className="mb-4">
+                  <span className="font-semibold">Empleado:</span> {modalDetalle.pedido.empleado}
                 </div>
                 <div className="mb-4">
                   <span className="font-semibold">Mesero:</span> {modalDetalle.pedido.mesero}
@@ -1048,4 +1192,3 @@ function Recepcion() {
 }
 
 export default Recepcion;
-
