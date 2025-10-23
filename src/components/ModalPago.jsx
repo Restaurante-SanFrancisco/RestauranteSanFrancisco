@@ -7,7 +7,9 @@ function ModalPago({ visible, onClose, onPagar, mesa, pedidoCompleto }) {
   const [habitacion, setHabitacion] = useState("");
   const [facturar, setFacturar] = useState(false);
   const [nit, setNit] = useState("");
-  const [errorHabitacion, setErrorHabitacion] = useState(""); 
+  const [errorHabitacion, setErrorHabitacion] = useState("");
+  const [nombreEmpleado, setNombreEmpleado] = useState("");
+  const [errorEmpleado, setErrorEmpleado] = useState("");
 
   useEffect(() => {
     if (visible) {
@@ -15,65 +17,102 @@ function ModalPago({ visible, onClose, onPagar, mesa, pedidoCompleto }) {
       setHabitacion("");
       setFacturar(false);
       setNit("");
-      setErrorHabitacion(""); // Limpiar error al abrir
+      setErrorHabitacion("");
+      setNombreEmpleado("");
+      setErrorEmpleado("");
     }
   }, [visible, mesa]);
 
   const handlePagar = async () => {
-    // Validar habitación si es recargado
-    if (metodoPago === "recargado" && !habitacion.trim()) {
-      setErrorHabitacion("Debes ingresar el número de habitación.");
-      return;
-    }
+  // Validar habitación si es recargado
+  if (metodoPago === "recargado" && !habitacion.trim()) {
+    setErrorHabitacion("Debes ingresar el número de habitación.");
+    return;
+  }
 
-    setErrorHabitacion(""); // Limpiar error si todo bien
+  // Validar nombre de empleado si es empleados
+  if (metodoPago === "empleados" && !nombreEmpleado.trim()) {
+    setErrorEmpleado("Debes ingresar el nombre del empleado.");
+    return;
+  }
 
-    const datosPago = {
-      metodo: metodoPago,
-      facturar,
-      nit: facturar ? sanitizeText(nit) : null,
-      habitacion: metodoPago === "recargado" ? sanitizeText(habitacion) : null,
-    };
+  setErrorHabitacion("");
+  setErrorEmpleado("");
 
-    if (datosPago?.metodo === "recargado") {
-      // 1. Obtener usuario autenticado
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("No hay usuario autenticado");
-
-      // 2. Obtener nombre del mesero actual desde la tabla infousuario
-      const { data: infoUsuario, error: infoError } = await supabase
-        .from('infousuario')
-        .select('nombre')
-        .eq('id', user.id)
-        .single();
-
-      if (infoError) throw infoError;
-
-      const nombreMeseroActual = sanitizeText(infoUsuario?.nombre || "Mesero desconocido");
-
-      // Simplificar detalle (sanitizado)
-      const detalleSimplificado = (pedidoCompleto?.items || []).map((item) => ({
-        nombre: sanitizeText(item?.nombre ?? ""),
-        cantidad: sanitizeNumber(item?.cantidad ?? 1, false),
-        precio: sanitizeNumber(item?.precio ?? 0, true),
-      }));
-
-      const { error: recargoError } = await supabase
-        .from("pedidos_recargados")
-        .insert({
-          pedido_id: pedidoCompleto?.id,
-          habitacion: sanitizeText(habitacion),
-          detalle_pedido: detalleSimplificado,
-          mesero: nombreMeseroActual,
-          total: sanitizeNumber(pedidoCompleto?.total ?? 0, true),
-        });
-
-      if (recargoError) throw recargoError;
-    }
-
-    onPagar({ metodo: metodoPago, habitacion, facturar, nit });
-    onClose();
+  const datosPago = {
+    metodo: metodoPago,
+    facturar,
+    nit: facturar ? sanitizeText(nit) : null,
+    habitacion: metodoPago === "recargado" ? sanitizeText(habitacion) : null,
+    empleado: metodoPago === "empleados" ? sanitizeText(nombreEmpleado) : null,
   };
+
+  // 1. Obtener usuario autenticado
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("No hay usuario autenticado");
+
+  // 2. Obtener nombre del mesero actual desde la tabla infousuario
+  const { data: infoUsuario, error: infoError } = await supabase
+    .from('infousuario')
+    .select('nombre')
+    .eq('id', user.id)
+    .single();
+
+  if (infoError) throw infoError;
+
+  const nombreMeseroActual = sanitizeText(infoUsuario?.nombre || "Mesero desconocido");
+
+  // Simplificar detalle (sanitizado)
+  const detalleSimplificado = (pedidoCompleto?.items || []).map((item) => ({
+    nombre: sanitizeText(item?.nombre ?? ""),
+    cantidad: sanitizeNumber(item?.cantidad ?? 1, false),
+    precio: sanitizeNumber(item?.precio ?? 0, true),
+  }));
+
+  // Obtener fecha actual para Guatemala
+  const getFechaGuatemala = () => {
+    const ahora = new Date();
+    const ahoraGT = new Date(ahora.getTime() - (6 * 60 * 60 * 1000));
+    return ahoraGT.toISOString().split('T')[0];
+  };
+
+  const fechaActual = getFechaGuatemala();
+
+  // Lógica para pedidos recargados (habitación)
+  if (datosPago?.metodo === "recargado") {
+    const { error: recargoError } = await supabase
+      .from("pedidos_recargados")
+      .insert({
+        pedido_id: pedidoCompleto?.id,
+        habitacion: sanitizeText(habitacion),
+        detalle_pedido: detalleSimplificado,
+        mesero: nombreMeseroActual,
+        total: sanitizeNumber(pedidoCompleto?.total ?? 0, true),
+        fecha: fechaActual // ✅ AGREGAR FECHA
+      });
+
+    if (recargoError) throw recargoError;
+  }
+
+  // Lógica para empleados recargados
+  if (datosPago?.metodo === "empleados") {
+    const { error: empleadoRecargoError } = await supabase
+      .from("empleados_recargados")
+      .insert({
+        pedido_id: pedidoCompleto?.id,
+        empleado: sanitizeText(nombreEmpleado),
+        detalle_pedido: detalleSimplificado,
+        mesero: nombreMeseroActual,
+        total: sanitizeNumber(pedidoCompleto?.total ?? 0, true),
+        fecha: fechaActual // ✅ AGREGAR FECHA
+      });
+
+    if (empleadoRecargoError) throw empleadoRecargoError;
+  }
+
+  onPagar(datosPago);
+  onClose();
+};
 
   if (!visible || !mesa) return null;
 
@@ -84,7 +123,7 @@ function ModalPago({ visible, onClose, onPagar, mesa, pedidoCompleto }) {
         <div className="space-y-4 text-gray-800">
           <div>
             <label className="block mb-2 font-medium text-gray-800">Método de pago:</label>
-            <div className="flex gap-4 text-gray-800">
+            <div className="grid grid-cols-3 gap-2 text-gray-800">
               <label className="flex items-center gap-2 text-gray-800">
                 <input
                   type="radio"
@@ -121,6 +160,24 @@ function ModalPago({ visible, onClose, onPagar, mesa, pedidoCompleto }) {
                 />
                 <span className="text-gray-800">Eventos</span>
               </label>
+              <label className="flex items-center gap-2 text-gray-800">
+                <input
+                  type="radio"
+                  checked={metodoPago === "transferencia"}
+                  onChange={() => setMetodoPago("transferencia")}
+                  className="text-green-600"
+                />
+                <span className="text-gray-800">Transferencia</span>
+              </label>
+              <label className="flex items-center gap-2 text-gray-800">
+                <input
+                  type="radio"
+                  checked={metodoPago === "empleados"}
+                  onChange={() => setMetodoPago("empleados")}
+                  className="text-green-600"
+                />
+                <span className="text-gray-800">Empleados</span>
+              </label>
             </div>
           </div>
 
@@ -130,12 +187,34 @@ function ModalPago({ visible, onClose, onPagar, mesa, pedidoCompleto }) {
               <input
                 type="text"
                 value={habitacion}
-                onChange={(e) => setHabitacion(sanitizeText(e.target.value))}
+                onChange={(e) => {
+                  setHabitacion(sanitizeText(e.target.value));
+                  setErrorHabitacion("");
+                }}
                 className={`w-full border rounded px-3 py-2 text-gray-800 ${errorHabitacion ? "border-red-500" : "border-gray-300"}`}
                 placeholder="Ej: 101"
               />
               {errorHabitacion && (
                 <p className="text-red-600 text-sm mt-1">{errorHabitacion}</p>
+              )}
+            </div>
+          )}
+
+          {metodoPago === "empleados" && (
+            <div>
+              <label className="block mb-2 font-medium text-gray-800">Nombre del empleado:</label>
+              <input
+                type="text"
+                value={nombreEmpleado}
+                onChange={(e) => {
+                  setNombreEmpleado(sanitizeText(e.target.value));
+                  setErrorEmpleado("");
+                }}
+                className={`w-full border rounded px-3 py-2 text-gray-800 ${errorEmpleado ? "border-red-500" : "border-gray-300"}`}
+                placeholder="Ingrese nombre del empleado"
+              />
+              {errorEmpleado && (
+                <p className="text-red-600 text-sm mt-1">{errorEmpleado}</p>
               )}
             </div>
           )}
