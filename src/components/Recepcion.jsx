@@ -481,27 +481,27 @@ function Recepcion() {
     }
   };
 
-  const facturarPedido = async (id) => {
-    try {
-      const { fecha } = getFechaHoraGuatemala();
+const facturarPedido = async (id) => {
+  try {
+    // ELIMINAR directamente de Supabase
+    const { error } = await supabase
+      .from("facturas")
+      .delete()
+      .eq("id", id);
 
-      const { error } = await supabase
-        .from("facturas")
-        .update({ 
-          facturado: true, 
-          fecha: fecha
-        })
-        .eq("id", id);
+    if (error) throw error;
 
-      if (error) throw error;
-
-      setMensaje(`Factura ${id} marcada como facturada.`);
-      setTimeout(() => setMensaje(""), 2000);
-    } catch (error) {
-      console.error("Error al facturar:", error);
-      toast.error("Error al procesar la factura: " + error.message);
-    }
-  };
+    await cargarPedidos();
+    setMensaje(`Factura ${id} eliminada correctamente.`);
+    setTimeout(() => setMensaje(""), 2000);
+    
+    toast.success(`✅ Factura ${id} eliminada`);
+    
+  } catch (error) {
+    console.error("Error al eliminar factura:", error);
+    toast.error("❌ Error al eliminar la factura: " + error.message);
+  }
+};
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -1192,3 +1192,4 @@ function Recepcion() {
 }
 
 export default Recepcion;
+
