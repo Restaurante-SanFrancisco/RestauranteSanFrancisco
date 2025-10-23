@@ -6,7 +6,7 @@ import notificationSound from "../assets/sounds/notification.mp3";
 import sinpedidos from "../assets/images/sinpedidos.png";
 import { toast } from "react-hot-toast";
 
-const MAX_ON_SCREEN = 3;
+const MAX_ON_SCREEN = 4;
 
 const CocinaDashboard = () => {
   const navigate = useNavigate();
@@ -112,7 +112,6 @@ const CocinaDashboard = () => {
     }
   };
 
-
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -124,19 +123,19 @@ const CocinaDashboard = () => {
 
   return (
     <div
-      className="min-h-screen p-6"
+      className="min-h-screen p-1"
       style={{
         background: "linear-gradient(135deg, #000000ff 0%, #0d4922ff 80%)",
       }}
       dir="rtl"
     >
-      <div className="flex items-center justify-between px-1 pt-1 pb-3">
+      <div className="flex items-center justify-between px-0 pt-0 pb-1">
         <img
           src="/LogoBlanco.png"
           alt="Logo Restaurante"
           className="w-36 h-20 object-contain drop-shadow"
         />     
-        <h1 className="text-3xl font-bold mb-6 text-center text-green-100" dir="ltr">
+        <h1 className="text-3xl font-bold mb-3 text-center text-green-100" dir="ltr">
         Pedidos Pendientes
         </h1>
         <button
@@ -164,12 +163,12 @@ const CocinaDashboard = () => {
       
 
       {allPedidos.length > MAX_ON_SCREEN && (
-        <div className="text-center mb-4 text-yellow-300 font-semibold" dir="ltr">
+        <div className="text-center mb-3 text-yellow-300 font-semibold" dir="ltr">
           Pedidos en cola: {allPedidos.length - MAX_ON_SCREEN}
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
         <AnimatePresence>
           {onScreenPedidos.map((pedido) => (
             <motion.div
@@ -195,12 +194,18 @@ const CocinaDashboard = () => {
               </div>
 
               <div className="flex justify-between items-start mb-2">
-                <h2 className="text-xl font-semibold">
-                  {pedido.destino}
-                  <span className="block text-sm text-gray-500">
+                <div>
+                  <h2 className="text-xl font-semibold">
+                    {pedido.destino}
+                  </h2>
+                  {/* ✅ NUEVO: ID del pedido debajo del destino */}
+                  <div className="text-sm font-medium text-gray-600 mt-1">
+                    ID: {pedido.id}
+                  </div>
+                  <span className="block text-sm text-gray-500 mt-1">
                     Mesero: {pedido.mesero}
                   </span>
-                </h2>
+                </div>
                 <span className="text-xs text-gray-500">
                   {formatDate(pedido.creado_en)}
                 </span>
@@ -272,4 +277,4 @@ const CocinaDashboard = () => {
   );
 };
 
-export default CocinaDashboard;
+export default CocinaDashboard; 
