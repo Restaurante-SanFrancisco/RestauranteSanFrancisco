@@ -10,6 +10,7 @@ function ModalPago({ visible, onClose, onPagar, mesa, pedidoCompleto }) {
   const [errorHabitacion, setErrorHabitacion] = useState("");
   const [nombreEmpleado, setNombreEmpleado] = useState("");
   const [errorEmpleado, setErrorEmpleado] = useState("");
+  const [descripcionFactura, setDescripcionFactura] = useState("consumo");
 
   useEffect(() => {
     if (visible) {
@@ -20,99 +21,123 @@ function ModalPago({ visible, onClose, onPagar, mesa, pedidoCompleto }) {
       setErrorHabitacion("");
       setNombreEmpleado("");
       setErrorEmpleado("");
+      setDescripcionFactura("consumo");
     }
   }, [visible, mesa]);
 
   const handlePagar = async () => {
-  // Validar habitación si es recargado
-  if (metodoPago === "recargado" && !habitacion.trim()) {
-    setErrorHabitacion("Debes ingresar el número de habitación.");
-    return;
-  }
+    // Validar habitación si es recargado
+    if (metodoPago === "recargado" && !habitacion.trim()) {
+      setErrorHabitacion("Debes ingresar el número de habitación.");
+      return;
+    }
 
-  // Validar nombre de empleado si es empleados
-  if (metodoPago === "empleados" && !nombreEmpleado.trim()) {
-    setErrorEmpleado("Debes ingresar el nombre del empleado.");
-    return;
-  }
+    // Validar nombre de empleado si es empleados
+    if (metodoPago === "empleados" && !nombreEmpleado.trim()) {
+      setErrorEmpleado("Debes ingresar el nombre del empleado.");
+      return;
+    }
 
-  setErrorHabitacion("");
-  setErrorEmpleado("");
+    // Validar nombre de evento si es eventos
+    if (metodoPago === "eventos" && !nombreEmpleado.trim()) {
+      setErrorEmpleado("Debes ingresar el nombre del evento.");
+      return;
+    }
 
-  const datosPago = {
-    metodo: metodoPago,
-    facturar,
-    nit: facturar ? sanitizeText(nit) : null,
-    habitacion: metodoPago === "recargado" ? sanitizeText(habitacion) : null,
-    empleado: metodoPago === "empleados" ? sanitizeText(nombreEmpleado) : null,
+    setErrorHabitacion("");
+    setErrorEmpleado("");
+
+    const datosPago = {
+      metodo: metodoPago,
+      facturar,
+      nit: facturar ? sanitizeText(nit) : null,
+      habitacion: metodoPago === "recargado" ? sanitizeText(habitacion) : null,
+      empleado: (metodoPago === "empleados" || metodoPago === "eventos") ? sanitizeText(nombreEmpleado) : null,
+      descripcionFactura: descripcionFactura,
+    };
+
+    // 1. Obtener usuario autenticado
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("No hay usuario autenticado");
+
+    // 2. Obtener nombre del mesero actual desde la tabla infousuario
+    const { data: infoUsuario, error: infoError } = await supabase
+      .from('infousuario')
+      .select('nombre')
+      .eq('id', user.id)
+      .single();
+
+    if (infoError) throw infoError;
+
+    const nombreMeseroActual = sanitizeText(infoUsuario?.nombre || "Mesero desconocido");
+
+    // Simplificar detalle (sanitizado)
+    const detalleSimplificado = (pedidoCompleto?.items || []).map((item) => ({
+      nombre: sanitizeText(item?.nombre ?? ""),
+      cantidad: sanitizeNumber(item?.cantidad ?? 1, false),
+      precio: sanitizeNumber(item?.precio ?? 0, true),
+    }));
+
+    // Obtener fecha actual para Guatemala
+    const getFechaGuatemala = () => {
+      const ahora = new Date();
+      const ahoraGT = new Date(ahora.getTime() - (6 * 60 * 60 * 1000));
+      return ahoraGT.toISOString().split('T')[0];
+    };
+
+    const fechaActual = getFechaGuatemala();
+
+    // Lógica para pedidos recargados (habitación)
+    if (datosPago?.metodo === "recargado") {
+      const { error: recargoError } = await supabase
+        .from("pedidos_recargados")
+        .insert({
+          pedido_id: pedidoCompleto?.id,
+          habitacion: sanitizeText(habitacion),
+          detalle_pedido: detalleSimplificado,
+          mesero: nombreMeseroActual,
+          total: sanitizeNumber(pedidoCompleto?.total ?? 0, true),
+          fecha: fechaActual
+        });
+
+      if (recargoError) throw recargoError;
+    }
+
+    // Lógica para empleados recargados
+    if (datosPago?.metodo === "empleados") {
+      const { error: empleadoRecargoError } = await supabase
+        .from("empleados_recargados")
+        .insert({
+          pedido_id: pedidoCompleto?.id,
+          empleado: sanitizeText(nombreEmpleado),
+          detalle_pedido: detalleSimplificado,
+          mesero: nombreMeseroActual,
+          total: sanitizeNumber(pedidoCompleto?.total ?? 0, true),
+          fecha: fechaActual
+        });
+
+      if (empleadoRecargoError) throw empleadoRecargoError;
+    }
+
+    // Lógica para eventos recargados
+    if (datosPago?.metodo === "eventos") {
+      const { error: eventoRecargoError } = await supabase
+        .from("eventos_recargados")
+        .insert({
+          pedido_id: pedidoCompleto?.id,
+          evento: sanitizeText(nombreEmpleado), // Reutilizamos el mismo campo de nombre
+          detalle_pedido: detalleSimplificado,
+          mesero: nombreMeseroActual,
+          total: sanitizeNumber(pedidoCompleto?.total ?? 0, true),
+          fecha: fechaActual
+        });
+
+      if (eventoRecargoError) throw eventoRecargoError;
+    }
+
+    onPagar(datosPago);
+    onClose();
   };
-
-  // 1. Obtener usuario autenticado
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("No hay usuario autenticado");
-
-  // 2. Obtener nombre del mesero actual desde la tabla infousuario
-  const { data: infoUsuario, error: infoError } = await supabase
-    .from('infousuario')
-    .select('nombre')
-    .eq('id', user.id)
-    .single();
-
-  if (infoError) throw infoError;
-
-  const nombreMeseroActual = sanitizeText(infoUsuario?.nombre || "Mesero desconocido");
-
-  // Simplificar detalle (sanitizado)
-  const detalleSimplificado = (pedidoCompleto?.items || []).map((item) => ({
-    nombre: sanitizeText(item?.nombre ?? ""),
-    cantidad: sanitizeNumber(item?.cantidad ?? 1, false),
-    precio: sanitizeNumber(item?.precio ?? 0, true),
-  }));
-
-  // Obtener fecha actual para Guatemala
-  const getFechaGuatemala = () => {
-    const ahora = new Date();
-    const ahoraGT = new Date(ahora.getTime() - (6 * 60 * 60 * 1000));
-    return ahoraGT.toISOString().split('T')[0];
-  };
-
-  const fechaActual = getFechaGuatemala();
-
-  // Lógica para pedidos recargados (habitación)
-  if (datosPago?.metodo === "recargado") {
-    const { error: recargoError } = await supabase
-      .from("pedidos_recargados")
-      .insert({
-        pedido_id: pedidoCompleto?.id,
-        habitacion: sanitizeText(habitacion),
-        detalle_pedido: detalleSimplificado,
-        mesero: nombreMeseroActual,
-        total: sanitizeNumber(pedidoCompleto?.total ?? 0, true),
-        fecha: fechaActual // ✅ AGREGAR FECHA
-      });
-
-    if (recargoError) throw recargoError;
-  }
-
-  // Lógica para empleados recargados
-  if (datosPago?.metodo === "empleados") {
-    const { error: empleadoRecargoError } = await supabase
-      .from("empleados_recargados")
-      .insert({
-        pedido_id: pedidoCompleto?.id,
-        empleado: sanitizeText(nombreEmpleado),
-        detalle_pedido: detalleSimplificado,
-        mesero: nombreMeseroActual,
-        total: sanitizeNumber(pedidoCompleto?.total ?? 0, true),
-        fecha: fechaActual // ✅ AGREGAR FECHA
-      });
-
-    if (empleadoRecargoError) throw empleadoRecargoError;
-  }
-
-  onPagar(datosPago);
-  onClose();
-};
 
   if (!visible || !mesa) return null;
 
@@ -200,9 +225,11 @@ function ModalPago({ visible, onClose, onPagar, mesa, pedidoCompleto }) {
             </div>
           )}
 
-          {metodoPago === "empleados" && (
+          {(metodoPago === "empleados" || metodoPago === "eventos") && (
             <div>
-              <label className="block mb-2 font-medium text-gray-800">Nombre del empleado:</label>
+              <label className="block mb-2 font-medium text-gray-800">
+                {metodoPago === "empleados" ? "Nombre del empleado:" : "Nombre del evento:"}
+              </label>
               <input
                 type="text"
                 value={nombreEmpleado}
@@ -211,7 +238,7 @@ function ModalPago({ visible, onClose, onPagar, mesa, pedidoCompleto }) {
                   setErrorEmpleado("");
                 }}
                 className={`w-full border rounded px-3 py-2 text-gray-800 ${errorEmpleado ? "border-red-500" : "border-gray-300"}`}
-                placeholder="Ingrese nombre del empleado"
+                placeholder={metodoPago === "empleados" ? "Ingrese nombre del empleado" : "Ingrese nombre del evento"}
               />
               {errorEmpleado && (
                 <p className="text-red-600 text-sm mt-1">{errorEmpleado}</p>
@@ -240,6 +267,45 @@ function ModalPago({ visible, onClose, onPagar, mesa, pedidoCompleto }) {
                 className="w-full border border-gray-300 rounded px-3 py-2 text-gray-800"
                 placeholder="Ingrese NIT"
               />
+              <label className="block mb-2 font-medium text-gray-800">Descripción para la factura</label>
+              <div className="grid grid-cols-2 gap-2 text-gray-800">
+                <label className="flex items-center gap-2 text-gray-800">
+                  <input
+                    type="radio"
+                    checked={descripcionFactura === "consumo"}
+                    onChange={() => setDescripcionFactura("consumo")}
+                    className="text-green-600"
+                  />
+                  <span className="text-gray-800">Consumo</span>
+                </label>
+                <label className="flex items-center gap-2 text-gray-800">
+                  <input
+                    type="radio"
+                    checked={descripcionFactura === "desayuno"}
+                    onChange={() => setDescripcionFactura("desayuno")}
+                    className="text-green-600"
+                  />
+                  <span className="text-gray-800">Desayuno</span>
+                </label>
+                <label className="flex items-center gap-2 text-gray-800">
+                  <input
+                    type="radio"
+                    checked={descripcionFactura === "almuerzo"}
+                    onChange={() => setDescripcionFactura("almuerzo")}
+                    className="text-green-600"
+                  />
+                  <span className="text-gray-800">Almuerzo</span>
+                </label>
+                <label className="flex items-center gap-2 text-gray-800">
+                  <input
+                    type="radio"
+                    checked={descripcionFactura === "cena"}
+                    onChange={() => setDescripcionFactura("cena")}
+                    className="text-green-600"
+                  />
+                  <span className="text-gray-800">Cena</span>
+                </label>
+              </div>
             </div>
           )}
 
