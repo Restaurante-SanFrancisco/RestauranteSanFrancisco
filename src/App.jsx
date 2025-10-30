@@ -5,8 +5,10 @@ import MeseroPanel from "./components/MeseroPanel";
 import CocinaDashboard from "./components/CocinaDashboard";
 import AdministrarUsuarios from "./components/AdministrarUsuarios"; 
 import AdministracionPlatos from "./components/administracionPlatillos";
+import Recargados from "./components/Recargados";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { Toaster, toast } from 'react-hot-toast';
+
 
 function App() {
   return (
@@ -54,6 +56,14 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['recepcion']}> 
               <AdministracionPlatos />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/recargados" 
+          element={
+            <ProtectedRoute allowedRoles={['recepcion']}> 
+              <Recargados />
             </ProtectedRoute>
           } 
         />
