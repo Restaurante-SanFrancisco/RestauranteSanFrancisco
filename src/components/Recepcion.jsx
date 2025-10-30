@@ -976,6 +976,99 @@ function Recepcion() {
           </div>
         </div>
       )}
+
+      {/* Modal Detalle Reporte */}
+      {modalDetalleReporte.visible && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div
+            className={`
+        bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full border-4 border-cyan-300
+        ${modalDetalleReporte.anim === "in" ? "animate-zoom-in" : "animate-zoom-out"}
+      `}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold text-cyan-700">Detalle del Pedido del Reporte</h2>
+              <button
+                onClick={cerrarModalDetalleReporte}
+                className="text-xl text-gray-500 hover:text-cyan-700 transition"
+                title="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+
+            {modalDetalleReporte.pedido && (
+              <>
+                <div className="mb-4">
+                  <span className="font-semibold">ID Pedido:</span> {modalDetalleReporte.pedido.id}
+                </div>
+
+                <div className="mb-4">
+                  <span className="font-semibold">Total:</span> Q {modalDetalleReporte.pedido.total?.toFixed(2) || '0.00'}
+                </div>
+
+                <div className="mb-4">
+                  <span className="font-semibold">Método de Pago:</span> {modalDetalleReporte.pedido.metodo_pago ? modalDetalleReporte.pedido.metodo_pago.charAt(0).toUpperCase() + modalDetalleReporte.pedido.metodo_pago.slice(1) : 'No especificado'}
+                </div>
+
+                {modalDetalleReporte.pedido.destino && (
+                  <div className="mb-4">
+                    <span className="font-semibold">Destino:</span> {modalDetalleReporte.pedido.destino}
+                  </div>
+                )}
+
+                {modalDetalleReporte.pedido.mesero && (
+                  <div className="mb-4">
+                    <span className="font-semibold">Mesero:</span> {modalDetalleReporte.pedido.mesero}
+                  </div>
+                )}
+
+                {modalDetalleReporte.pedido.fecha && (
+                  <div className="mb-4">
+                    <span className="font-semibold">Fecha:</span> {modalDetalleReporte.pedido.fecha}
+                  </div>
+                )}
+
+                {modalDetalleReporte.pedido.hora && (
+                  <div className="mb-4">
+                    <span className="font-semibold">Hora:</span> {modalDetalleReporte.pedido.hora}
+                  </div>
+                )}
+
+                {/* Detalles de items del pedido */}
+                <div className="mb-4">
+                  <span className="font-semibold">Items del Pedido:</span>
+                  <div className="mt-2 bg-gray-100 p-3 rounded-lg max-h-60 overflow-y-auto">
+                    <pre className="text-sm whitespace-pre-wrap">
+                      {modalDetalleReporte.pedido.items ?
+                        formatearItemsPedido(modalDetalleReporte.pedido.items) :
+                        "No hay detalles de items disponibles"
+                      }
+                    </pre>
+                  </div>
+                </div>
+
+                {/* Información adicional si está disponible */}
+                {modalDetalleReporte.pedido.terminado !== undefined && (
+                  <div className="mb-4">
+                    <span className="font-semibold">Estado:</span> {modalDetalleReporte.pedido.terminado ? 'Terminado' : 'Pendiente'}
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                onClick={cerrarModalDetalleReporte}
+                className="bg-cyan-500 hover:bg-cyan-700 text-white px-6 py-2 rounded-xl font-bold shadow transition"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
