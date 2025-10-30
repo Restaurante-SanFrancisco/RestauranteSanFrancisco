@@ -3,11 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { toast } from "react-hot-toast";
 import { sanitizeText, sanitizeHtmlReportes } from "../utils/sanitize";
+import notificationSound from "../assets/sounds/notification.mp3";
 
 function Recepcion() {
   const navigate = useNavigate();
   const [pedidosRecargados, setPedidosRecargados] = useState([]);
-  const [empleadosRecargados, setEmpleadosRecargados] = useState([]);
   const [pedidosFacturar, setPedidosFacturar] = useState([]);
   const [modalDetalle, setModalDetalle] = useState({ visible: false, pedido: null, anim: "in" });
   const [reportesRecibidos, setReportesRecibidos] = useState([]);
@@ -15,21 +15,16 @@ function Recepcion() {
   const [cargando, setCargando] = useState(true);
   const [usuarioRecepcion, setUsuarioRecepcion] = useState(null);
   const [idReporte, setIdReporte] = useState("");
-  const [modalDetalleReporte, setModalDetalleReporte] = useState({ 
-    visible: false, 
-    pedido: null, 
-    anim: "in" 
+  const [modalDetalleReporte, setModalDetalleReporte] = useState({
+    visible: false,
+    pedido: null,
+    anim: "in"
   });
   const [filtroHabitacion, setFiltroHabitacion] = useState("");
-  const [filtroEmpleado, setFiltroEmpleado] = useState("");
 
   const handleIdReporteChange = (e) => {
     const valorLimpio = sanitizeText(e.target.value);
     setIdReporte(valorLimpio);
-  };
-
-  const handleFiltroEmpleado = (e) => {
-    setFiltroEmpleado(sanitizeText(e.target.value));
   };
 
   const getFechaHoraGuatemala = () => {
@@ -42,6 +37,19 @@ function Recepcion() {
     return { fecha, hora: `${horas}:${minutos}:${segundos}` };
   };
 
+  // Función para reproducir sonido de notificación
+  const reproducirSonidoNotificacion = () => {
+    try {
+      const audio = new Audio(notificationSound);
+      audio.volume = 0.7; // Volumen al 70%
+      audio.play().catch(error => {
+        console.log('Error reproduciendo sonido:', error);
+      });
+    } catch (error) {
+      console.log('Error con Audio API');
+    }
+  };
+
   useEffect(() => {
     const obtenerUsuario = async () => {
       try {
@@ -52,7 +60,7 @@ function Recepcion() {
             .select('nombre')
             .eq('id', user.id)
             .single();
-          
+
           const nombreLimpio = usuarioInfo?.nombre ? sanitizeText(usuarioInfo.nombre) : "Recepcionista";
           setUsuarioRecepcion(nombreLimpio);
         }
@@ -69,7 +77,7 @@ function Recepcion() {
     try {
       setCargando(true);
 
-      // Cargar pedidos recargados (HABITACIONES) - CORREGIDO
+      // Cargar pedidos recargados (HABITACIONES)
       const { data: recargosData, error: recargosError } = await supabase
         .from("pedidos_recargados")
         .select(`
@@ -95,33 +103,7 @@ function Recepcion() {
         tipo: "recargado",
       }));
 
-      // Cargar empleados recargados
-      const { data: empleadosData, error: empleadosError } = await supabase
-        .from("empleados_recargados")
-        .select(`
-          id,
-          empleado,
-          detalle_pedido,
-          mesero,
-          total,
-          pedido_id,
-          fecha
-        `);
-
-      if (empleadosError) throw empleadosError;
-
-      const empleadosFormateados = empleadosData.map((item) => ({
-        id: item.id,
-        pedido_id: item.pedido_id,
-        empleado: sanitizeText(item.empleado),
-        total: item.total,
-        mesero: sanitizeText(item.mesero),
-        detalle: item.detalle_pedido,
-        fecha: item.fecha,
-        tipo: "empleado_recargado",
-      }));
-
-      // Cargar facturas
+      // Cargar facturas - ACTUALIZADO CON DESCRIPCIÓN
       const { data: facturasData, error: facturasError } = await supabase
         .from("facturas")
         .select(`
@@ -130,7 +112,8 @@ function Recepcion() {
           total,
           detalle_pedido,
           pedido_id,
-          fecha
+          fecha,
+          descripcion
         `)
         .eq('facturado', false);
 
@@ -143,11 +126,11 @@ function Recepcion() {
         nit: sanitizeText(item.nit),
         detalle: item.detalle_pedido,
         fecha: item.fecha,
+        descripcion: sanitizeText(item.descripcion || 'consumo'),
         tipo: "factura",
       }));
 
       setPedidosRecargados(recargosFormateados);
-      setEmpleadosRecargados(empleadosFormateados);
       setPedidosFacturar(facturasFormateadas);
     } catch (error) {
       console.error("Error cargando pedidos:", error);
@@ -156,8 +139,6 @@ function Recepcion() {
       setCargando(false);
     }
   };
-
-  // ... (el resto de las funciones permanecen igual)
 
   const fetchReportes = async (filtroId = null) => {
     try {
@@ -199,7 +180,7 @@ function Recepcion() {
 
   const imprimirReporte = (reporteId) => {
     const elementoImpresion = document.getElementById(`reporte-impresion-${reporteId}`);
-    
+
     if (!elementoImpresion) {
       toast.error("No se puede encontrar el contenido para imprimir");
       return;
@@ -255,9 +236,9 @@ function Recepcion() {
         </body>
       </html>
     `);
-    
+
     ventanaImpresion.document.close();
-    
+
     setTimeout(() => {
       ventanaImpresion.print();
     }, 250);
@@ -269,12 +250,12 @@ function Recepcion() {
 
     const subscriptionRecargados = supabase
       .channel('pedidos_recargados_changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'pedidos_recargados' 
-        }, 
+      .on('postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'pedidos_recargados'
+        },
         () => {
           supabase
             .from("pedidos_recargados")
@@ -306,53 +287,14 @@ function Recepcion() {
       )
       .subscribe();
 
-    const subscriptionEmpleados = supabase
-      .channel('empleados_recargados_changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'empleados_recargados' 
-        }, 
-        () => {
-          supabase
-            .from("empleados_recargados")
-            .select(`
-              id,
-              empleado,
-              detalle_pedido,
-              mesero,
-              total,
-              pedido_id,
-              fecha
-            `)
-            .then(({ data, error }) => {
-              if (!error && data) {
-                const empleadosFormateados = data.map((item) => ({
-                  id: item.id,
-                  pedido_id: item.pedido_id,
-                  empleado: sanitizeText(item.empleado),
-                  total: item.total,
-                  mesero: sanitizeText(item.mesero),
-                  detalle: item.detalle_pedido,
-                  fecha: item.fecha,
-                  tipo: "empleado_recargado",
-                }));
-                setEmpleadosRecargados(empleadosFormateados);
-              }
-            });
-        }
-      )
-      .subscribe();
-
     const subscriptionFacturas = supabase
       .channel('facturas_changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'facturas' 
-        }, 
+      .on('postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'facturas'
+        },
         () => {
           supabase
             .from("facturas")
@@ -362,7 +304,8 @@ function Recepcion() {
               total,
               detalle_pedido,
               pedido_id,
-              fecha
+              fecha,
+              descripcion
             `)
             .eq('facturado', false)
             .then(({ data, error }) => {
@@ -374,6 +317,7 @@ function Recepcion() {
                   nit: sanitizeText(item.nit),
                   detalle: item.detalle_pedido,
                   fecha: item.fecha,
+                  descripcion: sanitizeText(item.descripcion || 'consumo'),
                   tipo: "factura",
                 }));
                 setPedidosFacturar(facturasFormateadas);
@@ -400,7 +344,6 @@ function Recepcion() {
 
     return () => {
       supabase.removeChannel(subscriptionRecargados);
-      supabase.removeChannel(subscriptionEmpleados);
       supabase.removeChannel(subscriptionFacturas);
       supabase.removeChannel(channelReportes);
     };
@@ -464,44 +407,27 @@ function Recepcion() {
     }
   };
 
-  const cobrarPedidoEmpleado = async (empleadoRecargadoId) => {
+  const facturarPedido = async (id) => {
     try {
-      const { error: deleteError } = await supabase
-        .from("empleados_recargados")
+      const { error } = await supabase
+        .from("facturas")
         .delete()
-        .eq("id", empleadoRecargadoId);
+        .eq("id", id);
 
-      if (deleteError) throw deleteError;
+      if (error) throw error;
 
-      setMensaje(`Pedido de empleado marcado como cobrado.`);
+      await cargarPedidos();
+
+      setMensaje(`Factura ${id} eliminada correctamente.`);
       setTimeout(() => setMensaje(""), 2000);
+
+      toast.success(`✅ Factura ${id} eliminada`);
+
     } catch (error) {
-      console.error("Error al cobrar pedido de empleado:", error);
-      toast.error("Error al procesar el cobro: " + error.message);
+      console.error("Error al eliminar factura:", error);
+      toast.error("❌ Error al eliminar la factura: " + error.message);
     }
   };
-
-const facturarPedido = async (id) => {
-  try {
-    // ELIMINAR directamente de Supabase
-    const { error } = await supabase
-      .from("facturas")
-      .delete()
-      .eq("id", id);
-
-    if (error) throw error;
-
-    await cargarPedidos();
-    setMensaje(`Factura ${id} eliminada correctamente.`);
-    setTimeout(() => setMensaje(""), 2000);
-    
-    toast.success(`✅ Factura ${id} eliminada`);
-    
-  } catch (error) {
-    console.error("Error al eliminar factura:", error);
-    toast.error("❌ Error al eliminar la factura: " + error.message);
-  }
-};
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -539,7 +465,7 @@ const facturarPedido = async (id) => {
       return "No se puede mostrar el detalle";
     }
   };
-  
+
   const mostrarDetalleReporte = (pedido) => {
     setModalDetalleReporte({ visible: true, pedido: pedido, anim: "in" });
   };
@@ -579,11 +505,6 @@ const facturarPedido = async (id) => {
     (p.habitacion && p.habitacion.toLowerCase().includes(filtroHabitacion.trim().toLowerCase()))
   );
 
-  const empleadosRecargadosFiltrados = empleadosRecargados.filter(p =>
-    filtroEmpleado.trim() === "" ||
-    (p.empleado && p.empleado.toLowerCase().includes(filtroEmpleado.trim().toLowerCase()))
-  );
-
   useEffect(() => {
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
@@ -591,18 +512,18 @@ const facturarPedido = async (id) => {
   }, []);
 
   function mostrarNotificacion(titulo, cuerpo) {
+    reproducirSonidoNotificacion();
     if ("Notification" in window && Notification.permission === "granted") {
       new Notification(titulo, {
         body: cuerpo,
         icon: "/LogoBlanco.png",
         vibrate: [200, 100, 200],
-        tag: "pedido-nuevo"
+        tag: "pedido-nuevo-" + Date.now()
       });
     }
   }
 
   const prevRecargados = useRef(0);
-  const prevEmpleados = useRef(0);
   const prevFacturas = useRef(0);
 
   useEffect(() => {
@@ -614,16 +535,6 @@ const facturarPedido = async (id) => {
     }
     prevRecargados.current = pedidosRecargados.length;
   }, [pedidosRecargados]);
-
-  useEffect(() => {
-    if (empleadosRecargados.length > prevEmpleados.current) {
-      mostrarNotificacion(
-        "Nuevo pedido de empleado",
-        "¡Hay un nuevo pedido de empleado pendiente de cobro!"
-      );
-    }
-    prevEmpleados.current = empleadosRecargados.length;
-  }, [empleadosRecargados]);
 
   useEffect(() => {
     if (pedidosFacturar.length > prevFacturas.current) {
@@ -652,7 +563,7 @@ const facturarPedido = async (id) => {
         background: "linear-gradient(135deg, #000000ff 0%, #0d4922ff 80%)",
       }}
     >
-      {/* Logo y título integrados al fondo */}
+      {/* Logo y título integrados al fondo - ACTUALIZADO */}
       <div className="flex items-center justify-between px-6 pt-6 pb-4">
         <img
           src="/LogoBlanco.png"
@@ -662,41 +573,51 @@ const facturarPedido = async (id) => {
         <h1 className="text-3xl font-extrabold text-emerald-300 tracking-tight text-center drop-shadow-lg flex-1 text-center">
           Recepción - Control de Pedidos
         </h1>
-        <button
-          onClick={() => navigate("/usuarios")}
-          className="flex items-center text-emerald-300 hover:text-white transition-colors"
-        >
-          Administrar Usuarios
-        </button>
 
-        <button
-          onClick={() => navigate("/platos")}
-          className="flex items-center text-emerald-300 hover:text-white transition-colors ml-4"
-        >
-          Administrar Platos
-        </button>
-  
-
-        <button
-          onClick={handleLogout}
-          title="Cerrar sesión"
-          className="text-white hover:text-red-400 transition p-1 rounded ml-4"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
+        {/* Botones de navegación - ACTUALIZADO */}
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate("/recargados")}
+            className="flex items-center text-emerald-300 hover:text-white transition-colors font-medium"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"
-            />
-          </svg>
-        </button>
+            Recargados
+          </button>
+
+          <button
+            onClick={() => navigate("/usuarios")}
+            className="flex items-center text-emerald-300 hover:text-white transition-colors font-medium"
+          >
+            Administrar Usuarios
+          </button>
+
+          <button
+            onClick={() => navigate("/platos")}
+            className="flex items-center text-emerald-300 hover:text-white transition-colors font-medium"
+          >
+            Administrar Platos
+          </button>
+
+          <button
+            onClick={handleLogout}
+            title="Cerrar sesión"
+            className="text-white hover:text-red-400 transition p-1 rounded"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6">
@@ -787,7 +708,7 @@ const facturarPedido = async (id) => {
           </div>
         </section>
 
-        {/* SECCIÓN PEDIDOS A FACTURAR */}
+        {/* SECCIÓN PEDIDOS A FACTURAR - ACTUALIZADA */}
         <section className="mb-12">
           <div className="flex items-center gap-3 mb-4">
             <span className="text-2xl text-amber-100">🧾</span>
@@ -800,19 +721,18 @@ const facturarPedido = async (id) => {
               <table className="w-full text-amber-900">
                 <thead>
                   <tr className="bg-amber-50 border-b">
-                    <th className="py-3 px-4 text-left font-semibold">ID Factura</th>
                     <th className="py-3 px-4 text-left font-semibold">ID Pedido</th>
                     <th className="py-3 px-4 text-left font-semibold">Detalle</th>
                     <th className="py-3 px-4 text-left font-semibold">Total</th>
                     <th className="py-3 px-4 text-left font-semibold">NIT</th>
+                    <th className="py-3 px-4 text-left font-semibold">Descripción</th>
                     <th className="py-3 px-4 text-left font-semibold">Acción</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pedidosFacturar.map((pedido) => (
                     <tr key={pedido.id} className="hover:bg-amber-100/40 transition">
-                      <td className="py-3 px-4">{pedido.id}</td>
-                      <td className="py-3 px-4">{pedido.pedido_id}</td>
+                      <td className="py-3 px-4 font-medium">{pedido.pedido_id}</td>
                       <td className="py-3 px-4">
                         <button
                           className="bg-emerald-500 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg shadow transition text-sm"
@@ -823,6 +743,7 @@ const facturarPedido = async (id) => {
                       </td>
                       <td className="py-3 px-4 font-bold">Q {pedido.total.toFixed(2)}</td>
                       <td className="py-3 px-4">{pedido.nit}</td>
+                      <td className="py-3 px-4 capitalize">{pedido.descripcion || 'consumo'}</td>
                       <td className="py-3 px-4">
                         <button
                           className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-1 rounded-lg shadow transition text-sm"
@@ -842,7 +763,7 @@ const facturarPedido = async (id) => {
         {/* SECCIÓN REPORTES RECIBIDOS */}
         <section className="mb-12">
           <h3 className="text-xl font-bold mb-3 text-white">📊 Reportes Recibidos</h3>
-          
+
           <div className="mb-4 flex items-center gap-4 flex-wrap">
             <label htmlFor="idReporte" className="text-white font-medium">
               Buscar por ID de Reporte:
@@ -871,12 +792,12 @@ const facturarPedido = async (id) => {
               </button>
             )}
           </div>
-          
+
           {reportesRecibidos.length === 0 ? (
             <p className="text-gray-300">
-              {idReporte 
-              ? `No hay reportes con ID "${idReporte}"`
-              : "No hay reportes recibidos"}
+              {idReporte
+                ? `No hay reportes con ID "${idReporte}"`
+                : "No hay reportes recibidos"}
             </p>
           ) : (
             <div className="grid grid-cols-1 gap-4">
@@ -896,18 +817,18 @@ const facturarPedido = async (id) => {
                         onClick={() => imprimirReporte(reporte.id)}
                         title="Imprimir reporte"
                       >
-                        <svg 
-                          xmlns="http://www.w3.org/2000/svg" 
-                          className="h-5 w-5" 
-                          fill="none" 
-                          viewBox="0 0 24 24" 
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-5 w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
                           stroke="currentColor"
                         >
-                          <path 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round" 
-                            strokeWidth={2} 
-                            d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m4 4h6a2 2 0 002-2v-4a2 2 0 00-2-2h-6a2 2 0 00-2 2v4a2 2 0 002 2zM7 7h10v4H7V7z" 
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m4 4h6a2 2 0 002-2v-4a2 2 0 00-2-2h-6a2 2 0 00-2 2v4a2 2 0 002 2zM7 7h10v4H7V7z"
                           />
                         </svg>
                       </button>
@@ -982,139 +903,7 @@ const facturarPedido = async (id) => {
             </div>
           )}
         </section>
-
-        {/* ✅ NUEVA SECCIÓN: EMPLEADOS RECARGADOS - AHORA AL FINAL */}
-        <section className="mb-12">
-          <div className="flex items-center gap-3 mb-4">
-            <span className="text-2xl text-purple-100">👥</span>
-            <h2 className="text-2xl font-bold text-white">Empleados Recargados</h2>
-          </div>
-          <div className="mb-4 flex items-center gap-3">
-            <label htmlFor="filtroEmpleado" className="text-purple-100 font-medium">
-              Buscar por empleado:
-            </label>
-            <input
-              id="filtroEmpleado"
-              type="text"
-              value={filtroEmpleado}
-              onChange={handleFiltroEmpleado}
-              placeholder="Ej: Juan Pérez"
-              className="px-3 py-2 rounded-lg border border-purple-200 focus:outline-none focus:ring-2 focus:ring-purple-400"
-            />
-            {filtroEmpleado && (
-              <button
-                onClick={() => setFiltroEmpleado("")}
-                className="ml-2 px-3 py-2 rounded bg-gray-400 text-white hover:bg-gray-600"
-              >
-                Limpiar
-              </button>
-            )}
-          </div>
-          <div className="bg-white/80 rounded-2xl shadow border border-purple-100 p-0 overflow-x-auto animate-slide-in-left">
-            {empleadosRecargadosFiltrados.length === 0 ? (
-              <p className="text-purple-400 text-center py-10">No hay pedidos de empleados pendientes de cobro.</p>
-            ) : (
-              <table className="w-full text-purple-900">
-                <thead>
-                  <tr className="bg-purple-50 border-b">
-                    <th className="py-3 px-4 text-left font-semibold">ID Pedido</th>
-                    <th className="py-3 px-4 text-left font-semibold">Empleado</th>
-                    <th className="py-3 px-4 text-left font-semibold">Fecha</th>
-                    <th className="py-3 px-4 text-left font-semibold">Mesero</th>
-                    <th className="py-3 px-4 text-left font-semibold">Total</th>
-                    <th className="py-3 px-4 text-left font-semibold">Detalle</th>
-                    <th className="py-3 px-4 text-left font-semibold">Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {empleadosRecargadosFiltrados.map((pedido) => (
-                    <tr key={pedido.id} className="hover:bg-purple-100/40 transition">
-                      <td className="py-3 px-4">{pedido.pedido_id}</td>
-                      <td className="py-3 px-4">{pedido.empleado}</td>
-                      <td className="py-3 px-4">{pedido.fecha}</td>
-                      <td className="py-3 px-4">{pedido.mesero}</td>
-                      <td className="py-3 px-4 font-bold">Q {pedido.total.toFixed(2)}</td>
-                      <td className="py-3 px-4">
-                        <button
-                          className="bg-emerald-500 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg shadow transition text-sm"
-                          onClick={() => mostrarDetalle(pedido)}
-                        >
-                          Ver detalle
-                        </button>
-                      </td>
-                      <td className="py-3 px-4">
-                        <button
-                          className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-1 rounded-lg shadow transition text-sm"
-                          onClick={() => cobrarPedidoEmpleado(pedido.id)}
-                        >
-                          Cobrado
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </section>
       </main>
-
-      {/* Los modales permanecen igual */}
-      {modalDetalleReporte.visible && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div
-            className={`
-              bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full border-4 border-blue-300
-              ${modalDetalleReporte.anim === "in" ? "animate-zoom-in" : "animate-zoom-out"}
-            `}
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold text-blue-700">Detalle del Pedido en Reporte</h2>
-              <button
-                onClick={cerrarModalDetalleReporte}
-                className="text-xl text-gray-500 hover:text-blue-700 transition"
-                title="Cerrar"
-              >
-                ✕
-              </button>
-            </div>
-            
-            {modalDetalleReporte.pedido && (
-              <>
-                <div className="mb-4">
-                  <span className="font-semibold">ID Pedido:</span> {modalDetalleReporte.pedido.id}
-                </div>
-                <div className="mb-4">
-                  <span className="font-semibold">Habitación:</span> {modalDetalleReporte.pedido.habitacion}
-                </div>
-                <div className="mb-4">
-                  <span className="font-semibold">Mesero:</span> {modalDetalleReporte.pedido.mesero}
-                </div>
-                <div className="mb-4">
-                  <span className="font-semibold">Detalles:</span>
-                  <div className="mt-2 bg-gray-100 p-3 rounded-lg">
-                    <pre className="text-sm whitespace-pre-wrap">
-                      {formatearItemsPedido(modalDetalleReporte.pedido.items)}
-                    </pre>
-                  </div>
-                </div>
-                <div className="mb-4">
-                  <span className="font-semibold">Total:</span> Q {modalDetalleReporte.pedido.total?.toFixed(2)}
-                </div>
-              </>
-            )}
-            
-            <div className="flex justify-end">
-              <button
-                onClick={cerrarModalDetalleReporte}
-                className="bg-blue-500 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-bold shadow transition"
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {modalDetalle.visible && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -1134,7 +923,7 @@ const facturarPedido = async (id) => {
                 ✕
               </button>
             </div>
-            
+
             {modalDetalle.pedido.tipo === "recargado" && (
               <>
                 <div className="mb-4">
@@ -1156,13 +945,13 @@ const facturarPedido = async (id) => {
                 </div>
               </>
             )}
-            
+
             {modalDetalle.pedido.tipo === "factura" && (
               <div className="mb-4">
                 <span className="font-semibold">NIT:</span> {modalDetalle.pedido.nit}
               </div>
             )}
-            
+
             <div className="mb-4">
               <span className="font-semibold">Detalles:</span>
               <div className="mt-2 bg-gray-100 p-3 rounded-lg">
@@ -1171,11 +960,11 @@ const facturarPedido = async (id) => {
                 </pre>
               </div>
             </div>
-            
+
             <div className="mb-4">
               <span className="font-semibold">Total:</span> Q {modalDetalle.pedido.total.toFixed(2)}
             </div>
-            
+
             <div className="flex justify-end">
               <button
                 onClick={cerrarModalDetalle}
@@ -1192,4 +981,3 @@ const facturarPedido = async (id) => {
 }
 
 export default Recepcion;
-
