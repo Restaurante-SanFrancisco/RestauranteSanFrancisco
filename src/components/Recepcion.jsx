@@ -1011,12 +1011,6 @@ function Recepcion() {
                   <span className="font-semibold">Método de Pago:</span> {modalDetalleReporte.pedido.metodo_pago ? modalDetalleReporte.pedido.metodo_pago.charAt(0).toUpperCase() + modalDetalleReporte.pedido.metodo_pago.slice(1) : 'No especificado'}
                 </div>
 
-                {modalDetalleReporte.pedido.destino && (
-                  <div className="mb-4">
-                    <span className="font-semibold">Destino:</span> {modalDetalleReporte.pedido.destino}
-                  </div>
-                )}
-
                 {modalDetalleReporte.pedido.mesero && (
                   <div className="mb-4">
                     <span className="font-semibold">Mesero:</span> {modalDetalleReporte.pedido.mesero}
@@ -1026,12 +1020,6 @@ function Recepcion() {
                 {modalDetalleReporte.pedido.fecha && (
                   <div className="mb-4">
                     <span className="font-semibold">Fecha:</span> {modalDetalleReporte.pedido.fecha}
-                  </div>
-                )}
-
-                {modalDetalleReporte.pedido.hora && (
-                  <div className="mb-4">
-                    <span className="font-semibold">Hora:</span> {modalDetalleReporte.pedido.hora}
                   </div>
                 )}
 
@@ -1048,12 +1036,6 @@ function Recepcion() {
                   </div>
                 </div>
 
-                {/* Información adicional si está disponible */}
-                {modalDetalleReporte.pedido.terminado !== undefined && (
-                  <div className="mb-4">
-                    <span className="font-semibold">Estado:</span> {modalDetalleReporte.pedido.terminado ? 'Terminado' : 'Pendiente'}
-                  </div>
-                )}
               </>
             )}
 
@@ -1074,3 +1056,4 @@ function Recepcion() {
 }
 
 export default Recepcion;
+
