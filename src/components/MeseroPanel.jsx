@@ -13,20 +13,20 @@ import { sanitizeText, sanitizeNumber, sanitizeUrl, normalizeOpciones } from "..
 function sonOpcionesIguales(op1, op2) {
   // Si ambos son null/undefined, son iguales
   if (!op1 && !op2) return true;
-  
+
   // Si solo uno existe, no son iguales
   if (!op1 || !op2) return false;
-  
+
   // Si son arrays, comparar cada elemento
   if (Array.isArray(op1) && Array.isArray(op2)) {
     if (op1.length !== op2.length) return false;
-    
+
     return op1.every((op, index) => {
       const op2Item = op2[index];
       return op.opcion === op2Item.opcion && op.valor === op2Item.valor;
     });
   }
-  
+
   // Para otros casos (objetos simples), comparar como strings
   return JSON.stringify(op1) === JSON.stringify(op2);
 }
@@ -162,9 +162,9 @@ function MeseroPanel() {
 
   const quitarDelPedido = (plato) => {
     setPedido((prevPedido) => {
-      return prevPedido.filter(item => 
+      return prevPedido.filter(item =>
         // Comparar por id, opciones y nota (manejar null/undefined)
-        !(item.id === plato.id && 
+        !(item.id === plato.id &&
           sonOpcionesIguales(item.opciones, plato.opciones) &&
           (item.nota || null) === (plato.nota || null))
       );
@@ -182,78 +182,201 @@ function MeseroPanel() {
   };
 
   const handleEnviarACocina = async (pedidoData) => {
-  const destino = pedidoData.tipo === "mesa" ?
-    `Mesa ${pedidoData.mesa}` :
-    `Habitación ${pedidoData.habitacion}`;
-  const numero = pedidoData.tipo === "mesa" ? pedidoData.mesa : pedidoData.habitacion;
+    const destino = pedidoData.tipo === "mesa" ?
+      `Mesa ${pedidoData.mesa}` :
+      `Habitación ${pedidoData.habitacion}`;
+    const numero = pedidoData.tipo === "mesa" ? pedidoData.mesa : pedidoData.habitacion;
 
-  if (!Array.isArray(pedidoData.items) || pedidoData.items.length === 0) {
-    toast.error("El pedido no contiene ningún ítem");
-    return;
-  }
-
-  try {
-    // Obtener usuario autenticado
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("No hay usuario autenticado");
-
-    // Obtener nombre del mesero desde la tabla infousuario
-    const { data: infoUsuario, error: infoError } = await supabase
-      .from('infousuario')
-      .select('nombre')
-      .eq('id', user.id)
-      .single();
-
-    if (infoError) throw infoError;
-
-    const nombreMesero = sanitizeText(infoUsuario?.nombre || "Mesero desconocido");
-
-    // Sanitizar items del pedido antes de guardar
-    const itemsLimpios = (pedidoData.items || []).map(item => ({
-      ...item,
-      nombre: sanitizeText(item?.nombre ?? ""),
-      precio: sanitizeNumber(item?.precio ?? 0, true),
-      cantidad: sanitizeNumber(item?.cantidad ?? 1, false),
-      opciones: normalizeOpciones(item?.opciones)
-    }));
-
-    const totalLimpio = sanitizeNumber(pedidoData.total ?? 0, true);
-
-    // Verificar si la mesa/habitación ya está ocupada
-    const { data: mesaOcupada } = await supabase
-      .from('mesas_ocupadas')
-      .select('*')
-      .eq('numero', numero)
-      .eq('tipo', pedidoData.tipo)
-      .maybeSingle();
-
-    if (mesaOcupada) {
-    // Preguntar al usuario si quiere agregar al pedido existente
-    const confirmar = window.confirm(
-      `¡${destino} ya tiene un pedido activo!\n¿Desea agregar este pedido al existente?`
-    );
-    
-    if (!confirmar) {
-      return; // El usuario canceló
+    if (!Array.isArray(pedidoData.items) || pedidoData.items.length === 0) {
+      toast.error("El pedido no contiene ningún ítem");
+      return;
     }
-  }
 
-    if (mesaOcupada) {
-      // - Si el pedido existente ya está terminado (la cocina lo marcó),
-      //   creamos UN NUEVO pedido para que la cocina vea sólo los items nuevos.
-      // - Se concatenan en mesas_ocupadas / control de mesas para facturación.
-      const { data: pedidoExistente, error: pedidoError } = await supabase
-        .from('pedidos')
-        .select('*')
-        .eq('id', mesaOcupada.pedido_id)
+    try {
+      // Obtener usuario autenticado
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("No hay usuario autenticado");
+
+      // Obtener nombre del mesero desde la tabla infousuario
+      const { data: infoUsuario, error: infoError } = await supabase
+        .from('infousuario')
+        .select('nombre')
+        .eq('id', user.id)
         .single();
 
-      if (pedidoError) throw pedidoError;
+      if (infoError) throw infoError;
 
-      // Si el pedido existente está marcado como terminado -> crear nuevo pedido para cocina
-      if (pedidoExistente && pedidoExistente.terminado) {
-        // 1) Insertar un nuevo pedido SOLO con los items nuevos (para que cocina lo vea como tarjeta nueva)
-        const { data: nuevoPedido, error: nuevoPedidoError } = await supabase
+      const nombreMesero = sanitizeText(infoUsuario?.nombre || "Mesero desconocido");
+
+      // Sanitizar items del pedido antes de guardar
+      const itemsLimpios = (pedidoData.items || []).map(item => ({
+        ...item,
+        nombre: sanitizeText(item?.nombre ?? ""),
+        precio: sanitizeNumber(item?.precio ?? 0, true),
+        cantidad: sanitizeNumber(item?.cantidad ?? 1, false),
+        opciones: normalizeOpciones(item?.opciones)
+      }));
+
+      const totalLimpio = sanitizeNumber(pedidoData.total ?? 0, true);
+
+      // Verificar si la mesa/habitación ya está ocupada
+      const { data: mesaOcupada } = await supabase
+        .from('mesas_ocupadas')
+        .select('*')
+        .eq('numero', numero)
+        .eq('tipo', pedidoData.tipo)
+        .maybeSingle();
+
+      if (mesaOcupada) {
+        // Preguntar al usuario si quiere agregar al pedido existente
+        const confirmar = window.confirm(
+          `¡${destino} ya tiene un pedido activo!\n¿Desea agregar este pedido al existente?`
+        );
+
+        if (!confirmar) {
+          return; // El usuario canceló
+        }
+      }
+
+      if (mesaOcupada) {
+        // - Si el pedido existente ya está terminado (la cocina lo marcó),
+        //   creamos UN NUEVO pedido para que la cocina vea sólo los items nuevos.
+        // - Se concatenan en mesas_ocupadas / control de mesas para facturación.
+        const { data: pedidoExistente, error: pedidoError } = await supabase
+          .from('pedidos')
+          .select('*')
+          .eq('id', mesaOcupada.pedido_id)
+          .single();
+
+        if (pedidoError) throw pedidoError;
+
+        // Si el pedido existente está marcado como terminado -> crear nuevo pedido para cocina
+        if (pedidoExistente && pedidoExistente.terminado) {
+          // 1) Insertar un nuevo pedido SOLO con los items nuevos (para que cocina lo vea como tarjeta nueva)
+          const { data: nuevoPedido, error: nuevoPedidoError } = await supabase
+            .from('pedidos')
+            .insert([{
+              mesero: nombreMesero,
+              destino,
+              tipo: pedidoData.tipo,
+              numero,
+              items: itemsLimpios,
+              total: totalLimpio,
+            }])
+            .select()
+            .single();
+
+          if (nuevoPedidoError) throw nuevoPedidoError;
+
+          // 2) Mantener la "concatenación" para control/cobro: actualizar la fila de mesas_ocupadas
+          const itemsCombinadosParaMesa = [
+            ...(mesaOcupada.items || pedidoExistente.items || []),
+            ...itemsLimpios
+          ];
+
+          const nuevoTotalParaMesa = sanitizeNumber(
+            (pedidoExistente.total || 0) + totalLimpio,
+            true
+          );
+
+          const { error: mesaUpdateError } = await supabase
+            .from('mesas_ocupadas')
+            .update({
+              items: itemsCombinadosParaMesa,
+              total: nuevoTotalParaMesa
+              // NO cambiamos pedido_id: dejamos el histórico como referencia
+            })
+            .eq('numero', numero)
+            .eq('tipo', pedidoData.tipo);
+
+          if (mesaUpdateError) throw mesaUpdateError;
+
+          // 3) IMPORTANT: concatenar items y actualizar el pedido ORIGINAL (primer pedido_id)
+          //    para que los reportes que usan ese ID incluyan los items nuevos.
+          const itemsCombinadosOriginal = [
+            ...(pedidoExistente.items || []),
+            ...itemsLimpios
+          ];
+
+          const nuevoTotalOriginal = sanitizeNumber(
+            (pedidoExistente.total || 0) + totalLimpio,
+            true
+          );
+
+          const { error: updateOriginalError } = await supabase
+            .from('pedidos')
+            .update({
+              items: itemsCombinadosOriginal,
+              total: nuevoTotalOriginal
+            })
+            .eq('id', pedidoExistente.id);
+
+          if (updateOriginalError) throw updateOriginalError;
+
+          // 4) Actualizar estado local de mesas para reflejar la concatenación
+          setMesas(prev => ({
+            ...prev,
+            [destino]: {
+              items: itemsCombinadosParaMesa,
+              total: nuevoTotalParaMesa,
+              tipo: pedidoData.tipo
+            }
+          }));
+
+          toast.success(`Pedido separado enviado a cocina (${destino}) y concatenado al pedido original.`);
+        } else {
+          // Comportamiento anterior: concatena dentro del mismo pedido activo
+          // 1. Combinar items del pedido existente con el nuevo
+          const itemsCombinados = [
+            ...(pedidoExistente.items || []),
+            ...itemsLimpios
+          ];
+
+          // 2. Calcular nuevo total
+          const nuevoTotal = sanitizeNumber(
+            (pedidoExistente.total || 0) + totalLimpio,
+            true
+          );
+
+          // 3. Actualizar pedido existente en Supabase
+          const { error: updateError } = await supabase
+            .from('pedidos')
+            .update({
+              items: itemsCombinados,
+              total: nuevoTotal,
+              // Mantener otra información como mesero, destino, etc.
+            })
+            .eq('id', mesaOcupada.pedido_id);
+
+          if (updateError) throw updateError;
+
+          // 4. Actualizar mesa_ocupada con el nuevo total y items
+          const { error: mesaUpdateError2 } = await supabase
+            .from('mesas_ocupadas')
+            .update({
+              items: itemsCombinados,
+              total: nuevoTotal
+            })
+            .eq('numero', numero)
+            .eq('tipo', pedidoData.tipo);
+
+          if (mesaUpdateError2) throw mesaUpdateError2;
+
+          // 5. Actualizar estado local
+          setMesas(prev => ({
+            ...prev,
+            [destino]: {
+              items: itemsCombinados,
+              total: nuevoTotal,
+              tipo: pedidoData.tipo
+            }
+          }));
+
+          toast.success(`Pedido agregado a ${destino} (pedido existente)`);
+        }
+      } else {
+        // ✅ CREAR NUEVO PEDIDO (código original)
+        const { data: pedido, error: pedidoError } = await supabase
           .from('pedidos')
           .insert([{
             mesero: nombreMesero,
@@ -266,166 +389,43 @@ function MeseroPanel() {
           .select()
           .single();
 
-        if (nuevoPedidoError) throw nuevoPedidoError;
+        if (pedidoError) throw pedidoError;
 
-        // 2) Mantener la "concatenación" para control/cobro: actualizar la fila de mesas_ocupadas
-        const itemsCombinadosParaMesa = [
-          ...(mesaOcupada.items || pedidoExistente.items || []),
-          ...itemsLimpios
-        ];
-
-        const nuevoTotalParaMesa = sanitizeNumber(
-          (pedidoExistente.total || 0) + totalLimpio,
-          true
-        );
-
-        const { error: mesaUpdateError } = await supabase
+        // Marcar mesa/habitación como ocupada
+        const { error: mesaError } = await supabase
           .from('mesas_ocupadas')
-          .update({
-            items: itemsCombinadosParaMesa,
-            total: nuevoTotalParaMesa
-            // NO cambiamos pedido_id: dejamos el histórico como referencia
-          })
-          .eq('numero', numero)
-          .eq('tipo', pedidoData.tipo);
+          .insert([{
+            numero,
+            tipo: pedidoData.tipo,
+            pedido_id: pedido.id,
+            total: totalLimpio,
+            items: itemsLimpios
+          }]);
 
-        if (mesaUpdateError) throw mesaUpdateError;
+        if (mesaError) throw mesaError;
 
-        // 3) IMPORTANT: concatenar items y actualizar el pedido ORIGINAL (primer pedido_id)
-        //    para que los reportes que usan ese ID incluyan los items nuevos.
-        const itemsCombinadosOriginal = [
-          ...(pedidoExistente.items || []),
-          ...itemsLimpios
-        ];
-
-        const nuevoTotalOriginal = sanitizeNumber(
-          (pedidoExistente.total || 0) + totalLimpio,
-          true
-        );
-
-        const { error: updateOriginalError } = await supabase
-          .from('pedidos')
-          .update({
-            items: itemsCombinadosOriginal,
-            total: nuevoTotalOriginal
-          })
-          .eq('id', pedidoExistente.id);
-
-        if (updateOriginalError) throw updateOriginalError;
-
-        // 4) Actualizar estado local de mesas para reflejar la concatenación
+        // Actualizar estado local
         setMesas(prev => ({
           ...prev,
           [destino]: {
-            items: itemsCombinadosParaMesa,
-            total: nuevoTotalParaMesa,
+            items: itemsLimpios,
+            total: totalLimpio,
             tipo: pedidoData.tipo
           }
         }));
 
-        toast.success(`Pedido separado enviado a cocina (${destino}) y concatenado al pedido original.`);
-      } else {
-        // Comportamiento anterior: concatena dentro del mismo pedido activo
-        // 1. Combinar items del pedido existente con el nuevo
-        const itemsCombinados = [
-          ...(pedidoExistente.items || []),
-          ...itemsLimpios
-        ];
-
-        // 2. Calcular nuevo total
-        const nuevoTotal = sanitizeNumber(
-          (pedidoExistente.total || 0) + totalLimpio,
-          true
-        );
-
-        // 3. Actualizar pedido existente en Supabase
-        const { error: updateError } = await supabase
-          .from('pedidos')
-          .update({
-            items: itemsCombinados,
-            total: nuevoTotal,
-            // Mantener otra información como mesero, destino, etc.
-          })
-          .eq('id', mesaOcupada.pedido_id);
-
-        if (updateError) throw updateError;
-
-        // 4. Actualizar mesa_ocupada con el nuevo total y items
-        const { error: mesaUpdateError2 } = await supabase
-          .from('mesas_ocupadas')
-          .update({
-            items: itemsCombinados,
-            total: nuevoTotal
-          })
-          .eq('numero', numero)
-          .eq('tipo', pedidoData.tipo);
-
-        if (mesaUpdateError2) throw mesaUpdateError2;
-
-        // 5. Actualizar estado local
-        setMesas(prev => ({
-          ...prev,
-          [destino]: {
-            items: itemsCombinados,
-            total: nuevoTotal,
-            tipo: pedidoData.tipo
-          }
-        }));
-
-        toast.success(`Pedido agregado a ${destino} (pedido existente)`);
+        toast.success(`Pedido enviado a cocina (${destino})`);
       }
-    } else {
-      // CREAR NUEVO PEDIDO
-      const { data: pedido, error: pedidoError } = await supabase
-        .from('pedidos')
-        .insert([{
-          mesero: nombreMesero,
-          destino,
-          tipo: pedidoData.tipo,
-          numero,
-          items: itemsLimpios,
-          total: totalLimpio,
-        }])
-        .select()
-        .single();
 
-      if (pedidoError) throw pedidoError;
+      // Limpiar el pedido actual
+      setPedido([]);
+      setMostrarResumen(false);
 
-      // Marcar mesa/habitación como ocupada
-      const { error: mesaError } = await supabase
-        .from('mesas_ocupadas')
-        .insert([{
-          numero,
-          tipo: pedidoData.tipo,
-          pedido_id: pedido.id,
-          total: totalLimpio,
-          items: itemsLimpios
-        }]);
-
-      if (mesaError) throw mesaError;
-
-      // Actualizar estado local
-      setMesas(prev => ({
-        ...prev,
-        [destino]: {
-          items: itemsLimpios,
-          total: totalLimpio,
-          tipo: pedidoData.tipo
-        }
-      }));
-
-      toast.success(`Pedido enviado a cocina (${destino})`);
+    } catch (error) {
+      console.error("Error al enviar pedido:", error);
+      toast.error("Error al enviar el pedido a cocina");
     }
-
-    // Limpiar el pedido actual
-    setPedido([]);
-    setMostrarResumen(false);
-
-  } catch (error) {
-    console.error("Error al enviar pedido:", error);
-    toast.error("Error al enviar el pedido a cocina");
-  }
-};
+  };
 
   const fetchPlatosPorCategoria = async (categoriaId) => {
     try {
@@ -523,31 +523,34 @@ function MeseroPanel() {
 
       if (pedidoError) throw pedidoError;
 
-            // 5. Si se facturará, crear registro en tabla facturas
+
+      // 5. Si se facturará, crear registro en tabla facturas
       if (datosPago?.facturar && datosPago?.nit) {
-      const { data: pedidoCompleto, error: pedidoError } = await supabase
-        .from("pedidos")
-        .select("*")
-        .eq("id", pedidoId)
-        .single();
+        const { data: pedidoCompleto, error: pedidoError } = await supabase
+          .from("pedidos")
+          .select("*")
+          .eq("id", pedidoId)
+          .single();
 
-      if (pedidoError) throw pedidoError;
+        if (pedidoError) throw pedidoError;
 
-      // Crear registro en la tabla facturas
-      const { error: facturaError } = await supabase
-        .from("facturas")
-        .insert([{
-          pedido_id: pedidoId,
-          nit: sanitizeText(datosPago.nit),
-          total: pedidoCompleto.total,
-          detalle_pedido: pedidoCompleto.items,
-          facturado: false,
-          fecha: fecha
-        }]);
+        // Crear registro en la tabla facturas
+        const { error: facturaError } = await supabase
+          .from("facturas")
+          .insert([{
+            pedido_id: pedidoId,
+            nit: sanitizeText(datosPago.nit),
+            total: pedidoCompleto.total,
+            detalle_pedido: pedidoCompleto.items,
+            descripcion: datosPago.descripcionFactura,
+            facturado: false,
+            fecha: fecha
+          }]);
 
-      if (facturaError) throw facturaError;
-    }
-      
+        if (facturaError) throw facturaError;
+      }
+
+
       // 6. Actualizar estado local (eliminar mesa)
       setMesas((prev) => {
         const nuevasMesas = { ...prev };
@@ -650,7 +653,7 @@ function MeseroPanel() {
         >
           📊 Reportes
         </button>
-        
+
       </div>
 
       <ModalReporte
@@ -690,9 +693,8 @@ function MeseroPanel() {
 
       {categoriaActiva && (
         <div
-          className={`bg-white text-verde rounded-xl p-4 mb-6 shadow-md ${
-            animarPlatos ? "animate-slide-in-left" : ""
-          }`}
+          className={`bg-white text-verde rounded-xl p-4 mb-6 shadow-md ${animarPlatos ? "animate-slide-in-left" : ""
+            }`}
         >
           <h2 className="text-xl font-bold mb-3 capitalize">
             {sanitizeText(categorias.find((c) => c.id === categoriaActiva)?.nombre || "")}
@@ -772,4 +774,3 @@ function MeseroPanel() {
 }
 
 export default MeseroPanel;
-
