@@ -6,6 +6,7 @@ import { sanitizeText, sanitizeHtmlReportes, sanitizeNumber, sanitizeObject } fr
 export default function ModalReporte({ visible, onClose }) {
   const [pedidos, setPedidos] = useState([]);
   const [infoRecargados, setInfoRecargados] = useState({});
+  const [infoEmpleados, setInfoEmpleados] = useState({});
   const [enviando, setEnviando] = useState(false);
   const [meseroActual, setMeseroActual] = useState('Sistema');
   const [modalDetalle, setModalDetalle] = useState({ visible: false, pedido: null });
@@ -25,7 +26,7 @@ export default function ModalReporte({ visible, onClose }) {
   const formatearDetalleItems = (items) => {
     try {
       if (!items) return "Sin detalles";
-      
+
       let itemsArray;
       if (typeof items === 'string') {
         try {
@@ -36,18 +37,18 @@ export default function ModalReporte({ visible, onClose }) {
       } else {
         itemsArray = items;
       }
-      
+
       if (!Array.isArray(itemsArray)) return "Formato inválido";
-      
+
       return itemsArray.map(item => {
         const nombreLimpio = sanitizeText(item.nombre || '');
         const cantidad = sanitizeNumber(item.cantidad || 1, false);
         const precio = sanitizeNumber(item.precio || 0, true);
         const total = cantidad * precio;
-        
+
         return `${cantidad} × ${nombreLimpio} - Q${total.toFixed(2)}`;
       }).join('\n');
-      
+
     } catch (error) {
       console.error("Error formateando items:", error);
       return "Error al mostrar detalles";
@@ -99,7 +100,7 @@ export default function ModalReporte({ visible, onClose }) {
     return { start, end, turno, esCambioDeTurno };
   };
 
-  // Función para obtener datos de pedidos y recargados
+  // Función para obtener datos de pedidos, recargados y empleados
   const fetchDatos = async () => {
     const { start, end } = getTurnoRange();
 
@@ -139,7 +140,9 @@ export default function ModalReporte({ visible, onClose }) {
       });
 
       const recargadosMap = {};
+      const empleadosMap = {};
 
+      // Obtener datos de pedidos recargados (habitaciones)
       const { data: recargadosActivos, error: recargadosError } = await supabase
         .from("pedidos_recargados")
         .select("pedido_id, habitacion, mesero");
@@ -157,6 +160,24 @@ export default function ModalReporte({ visible, onClose }) {
         });
       }
 
+      // Obtener datos de empleados recargados
+      const { data: empleadosRecargados, error: empleadosError } = await supabase
+        .from("empleados_recargados")
+        .select("pedido_id, empleado, mesero");
+
+      if (empleadosError)
+        console.error("Error empleados recargados:", empleadosError);
+
+      if (empleadosRecargados) {
+        empleadosRecargados.forEach((empleadoRec) => {
+          empleadosMap[empleadoRec.pedido_id] = {
+            empleado: sanitizeText(empleadoRec.empleado),
+            mesero: sanitizeText(empleadoRec.mesero),
+          };
+        });
+      }
+
+      // Procesar pedidos históricos (para compatibilidad)
       pedidosFiltrados.forEach((pedido) => {
         if (pedido.mesero && pedido.mesero.includes("/") && pedido.terminado) {
           recargadosMap[pedido.id] = {
@@ -180,177 +201,220 @@ export default function ModalReporte({ visible, onClose }) {
 
       setPedidos(pedidosLimpios);
       setInfoRecargados(recargadosMap);
+      setInfoEmpleados(empleadosMap);
     } catch (error) {
       console.error("Error cargando datos:", error);
     }
   };
 
   // Función para enviar reporte a recepción
-const enviarARecepcion = async () => {
-  setEnviando(true);
-  try {
-    const { fecha: fechaCorrecta, hora: horaCorrecta } = getFechaHoraGuatemala();
-    
-    // ⬇️ CALCULAR turno DENTRO de la función
-    const { turno: turnoActual } = getTurnoRange();
-    
-    const meseroLimpio = sanitizeText(meseroActual);
-    const turnoLimpio = sanitizeText(turnoActual); // ⬅️ Usar turnoActual aquí
-    const fechaLimpia = sanitizeText(new Date().toLocaleDateString('es-GT'));
+  const enviarARecepcion = async () => {
+    setEnviando(true);
+    try {
+      const { fecha: fechaCorrecta, hora: horaCorrecta } = getFechaHoraGuatemala();
 
-    // ⬇️ También necesitas calcular pedidosTerminados DENTRO de la función
-    const pedidosTerminadosActuales = pedidos.filter(pedido => pedido.terminado);
-    
-    // ⬇️ Y calcular totales DENTRO de la función
-    const { totalEfectivo, totalTarjeta, totalRecargado, totalEventos } = calcularTotalesDesdePedidos(pedidosTerminadosActuales);
+      const { turno: turnoActual } = getTurnoRange();
 
-    const reporteHTML = `
-      <div style="background: linear-gradient(135deg, #000000ff 0%, #0d4922ff 80%); color: white; padding: 20px; border-radius: 10px;">
-        <h2 style="text-align: center; font-size: 24px; font-weight: bold; color: #fbbf24; margin-bottom: 10px;">
-          REPORTE DE VENTAS
-        </h2>
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
-          <div style="background: #374151; padding: 10px; border-radius: 5px;">
-            <span style="font-weight: bold; color: #fbbf24;">Generado por:</span> ${meseroLimpio}
+      const meseroLimpio = sanitizeText(meseroActual);
+      const turnoLimpio = sanitizeText(turnoActual);
+      const fechaLimpia = sanitizeText(new Date().toLocaleDateString('es-GT'));
+
+      const pedidosTerminadosActuales = pedidos.filter(pedido => pedido.terminado);
+
+      const {
+        totalEfectivo,
+        totalTarjeta,
+        totalRecargado,
+        totalTransferencia,
+        totalEventos,
+        totalEmpleados
+      } = calcularTotalesDesdePedidos(pedidosTerminadosActuales);
+
+      const reporteHTML = `
+        <div style="background: linear-gradient(135deg, #000000ff 0%, #0d4922ff 80%); color: white; padding: 20px; border-radius: 10px;">
+          <h2 style="text-align: center; font-size: 24px; font-weight: bold; color: #fbbf24; margin-bottom: 10px;">
+            REPORTE DE VENTAS
+          </h2>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
+            <div style="background: #374151; padding: 10px; border-radius: 5px;">
+              <span style="font-weight: bold; color: #fbbf24;">Generado por:</span> ${meseroLimpio}
+            </div>
+            <div style="background: #374151; padding: 10px; border-radius: 5px;">
+              <span style="font-weight: bold; color: #fbbf24;">Fecha:</span> ${fechaLimpia}
+            </div>
+            <div style="background: #374151; padding: 10px; border-radius: 5px;">
+              <span style="font-weight: bold; color: #fbbf24;">Turno:</span> ${turnoLimpio}
+            </div>
+            <div style="background: #374151; padding: 10px; border-radius: 5px;">
+              <span style="font-weight: bold; color: #fbbf24;">Total Pedidos:</span> ${pedidosTerminadosActuales.length}
+            </div>
           </div>
-          <div style="background: #374151; padding: 10px; border-radius: 5px;">
-            <span style="font-weight: bold; color: #fbbf24;">Fecha:</span> ${fechaLimpia}
-          </div>
-          <div style="background: #374151; padding: 10px; border-radius: 5px;">
-            <span style="font-weight: bold; color: #fbbf24;">Turno:</span> ${turnoLimpio}
-          </div>
-          <div style="background: #374151; padding: 10px; border-radius: 5px;">
-            <span style="font-weight: bold; color: #fbbf24;">Total Pedidos:</span> ${pedidosTerminadosActuales.length}
-          </div>
+          <table style="width: 100%; border-collapse: collapse; border: 1px solid #4b5563; font-size: 14px;">
+            <thead>
+              <tr style="background: #374151;">
+                <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #fbbf24;">ID Pedido</th>
+                <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #10b981;">Efectivo</th>
+                <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #3b82f6;">Tarjeta</th>
+                <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #8b5cf6;">Recargado</th>
+                <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #f59e0b;">Transferencia</th>
+                <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #acf65cff;">Eventos</th>
+                <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #f97316;">Habitación</th>
+                <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #ec4899;">Empleados</th>
+                <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #06b6d4;">Mesero</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${pedidosTerminadosActuales.map(pedido => {
+        const infoRecargado = infoRecargados[pedido.id];
+        const infoEmpleado = infoEmpleados[pedido.id];
+        const fueRecargado = !!infoRecargado;
+        const fueEmpleado = !!infoEmpleado;
+
+        const idLimpio = sanitizeText(pedido.id);
+        const totalLimpio = Number(sanitizeNumber(pedido.total, true)).toFixed(2);
+        const habitacionLimpia = fueRecargado ? sanitizeText(infoRecargado.habitacion) : '-';
+        const empleadoLimpio = fueEmpleado ? sanitizeText(infoEmpleado.empleado) : '-';
+        const meseroLimpio = fueRecargado ? sanitizeText(infoRecargado.mesero) :
+          fueEmpleado ? sanitizeText(infoEmpleado.mesero) :
+            sanitizeText(pedido.mesero);
+
+        return `
+                  <tr style="background: #1f2937;">
+                    <td style="padding: 8px; border: 1px solid #4b5563; text-align: center;">${idLimpio}</td>
+                    <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #10b981;">
+                      ${pedido.metodo_pago === 'efectivo' ? `Q${totalLimpio}` : '-'}
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #3b82f6;">
+                      ${pedido.metodo_pago === 'tarjeta' ? `Q${totalLimpio}` : '-'}
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #8b5cf6;">
+                      ${pedido.metodo_pago === 'recargado' ? `Q${totalLimpio}` : '-'}
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #f59e0b;">
+                      ${pedido.metodo_pago === 'transferencia' ? `Q${totalLimpio}` : '-'}
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #acf65cff;">
+                      ${pedido.metodo_pago === 'eventos' ? `Q${totalLimpio}` : '-'}
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #f97316;">
+                      ${habitacionLimpia}
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #ec4899;">
+                      ${empleadoLimpio}
+                    </td>
+                    <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #06b6d4;">
+                      ${meseroLimpio}
+                    </td>
+                  </tr>
+                `;
+      }).join('')}
+              <tr style="background: #374151; font-weight: bold;">
+                <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #fbbf24;">TOTALES</td>
+                <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #10b981;">Q${Number(sanitizeNumber(totalEfectivo, true)).toFixed(2)}</td>
+                <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #3b82f6;">Q${Number(sanitizeNumber(totalTarjeta, true)).toFixed(2)}</td>
+                <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #8b5cf6;">Q${Number(sanitizeNumber(totalRecargado, true)).toFixed(2)}</td>
+                <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #f59e0b;">Q${Number(sanitizeNumber(totalTransferencia, true)).toFixed(2)}</td>
+                <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #acf65cff;">Q${Number(sanitizeNumber(totalEventos, true)).toFixed(2)}</td>
+                <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #f97316;">-</td>
+                <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #ec4899;">-</td>
+                <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #06b6d4;">-</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <table style="width: 100%; border-collapse: collapse; border: 1px solid #4b5563; font-size: 14px;">
-          <thead>
-            <tr style="background: #374151;">
-              <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #fbbf24;">ID Pedido</th>
-              <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #10b981;">Efectivo</th>
-              <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #3b82f6;">Tarjeta</th>
-              <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #8b5cf6;">Recargado</th>                
-              <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #acf65cff;">Eventos</th>
-              <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #f97316;">Habitación</th>
-              <th style="padding: 10px; border: 1px solid #4b5563; font-weight: bold; color: #ec4899;">Mesero</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${pedidosTerminadosActuales.map(pedido => {
-              const infoRecargado = infoRecargados[pedido.id];
-              const fueRecargado = !!infoRecargado;
-              const idLimpio = sanitizeText(pedido.id);
-              const totalLimpio = Number(sanitizeNumber(pedido.total, true)).toFixed(2);
-              const habitacionLimpia = fueRecargado ? sanitizeText(infoRecargado.habitacion) : '-';
-              const meseroLimpio = fueRecargado ? sanitizeText(infoRecargado.mesero) : '-';
-              
-              return `
-                <tr style="background: #1f2937;">
-                  <td style="padding: 8px; border: 1px solid #4b5563; text-align: center;">${idLimpio}</td>
-                  <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #10b981;">
-                    ${pedido.metodo_pago === 'efectivo' ? `Q${totalLimpio}` : '-'}
-                  </td>
-                  <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #3b82f6;">
-                    ${pedido.metodo_pago === 'tarjeta' ? `Q${totalLimpio}` : '-'}
-                  </td>
-                  <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #8b5cf6;">
-                    ${pedido.metodo_pago === 'recargado' ? `Q${totalLimpio}` : '-'}
-                  </td>
-                  <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #acf65cff;">
-                    ${pedido.metodo_pago === 'eventos' ? `Q${totalLimpio}` : '-'}
-                  </td>
-                  <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #f97316;">
-                    ${habitacionLimpia}
-                  </td>
-                  <td style="padding: 8px; border: 1px solid #4b5563; text-align: center; color: #ec4899;">
-                    ${meseroLimpio}
-                  </td>
-                </tr>
-              `;
-            }).join('')}
-            <tr style="background: #374151; font-weight: bold;">
-              <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #fbbf24;">TOTALES</td>
-              <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #10b981;">Q${Number(sanitizeNumber(totalEfectivo, true)).toFixed(2)}</td>
-              <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #3b82f6;">Q${Number(sanitizeNumber(totalTarjeta, true)).toFixed(2)}</td>
-              <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #8b5cf6;">Q${Number(sanitizeNumber(totalRecargado, true)).toFixed(2)}</td>
-              <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #acf65cff;">Q${Number(sanitizeNumber(totalEventos, true)).toFixed(2)}</td>
-              <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #f97316;">-</td>
-              <td style="padding: 10px; border: 1px solid #4b5563; text-align: center; color: #ec4899;">-</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    `;
+      `;
 
-    const reporteHTMLSeguro = sanitizeHtmlReportes(reporteHTML);
+      const reporteHTMLSeguro = sanitizeHtmlReportes(reporteHTML);
 
-    const reporteData = sanitizeObject({
-      fecha: fechaCorrecta,
-      turno: turnoLimpio,
-      total_efectivo: Number(sanitizeNumber(totalEfectivo, true)),
-      total_tarjeta: Number(sanitizeNumber(totalTarjeta, true)),
-      total_recargado: Number(sanitizeNumber(totalRecargado, true)),
-      total_eventos: Number(sanitizeNumber(totalEventos, true)),
-      total_pedidos: pedidosTerminadosActuales.length,
-      datos_reportes: pedidosTerminadosActuales.map(pedido => ({
-        ...pedido,
-        items: typeof pedido.items === 'string' ? pedido.items : JSON.stringify(pedido.items)
-      })),
-      mesero_recepcionista: meseroLimpio,
-      reporte_html: reporteHTMLSeguro,
-      formato_especial: true,
+      const reporteData = sanitizeObject({
+        fecha: fechaCorrecta,
+        turno: turnoLimpio,
+        total_efectivo: Number(sanitizeNumber(totalEfectivo, true)),
+        total_tarjeta: Number(sanitizeNumber(totalTarjeta, true)),
+        total_recargado: Number(sanitizeNumber(totalRecargado, true)),
+        total_transferencia: Number(sanitizeNumber(totalTransferencia, true)),
+        total_eventos: Number(sanitizeNumber(totalEventos, true)),
+        total_empleados: Number(sanitizeNumber(totalEmpleados, true)),
+        total_pedidos: pedidosTerminadosActuales.length,
+        datos_reportes: pedidosTerminadosActuales.map(pedido => ({
+          ...pedido,
+          items: typeof pedido.items === 'string' ? pedido.items : JSON.stringify(pedido.items)
+        })),
+        mesero_recepcionista: meseroLimpio,
+        reporte_html: reporteHTMLSeguro,
+        formato_especial: true,
+      });
+
+      const { data, error } = await supabase
+        .from('reportes_enviados')
+        .upsert([reporteData], {
+          onConflict: 'fecha,turno',
+          ignoreDuplicates: false
+        })
+        .select();
+
+      if (error) throw error;
+
+      const esActualizacion = data && data[0] && data[0].id;
+
+      if (esActualizacion) {
+        toast.success('✅ Reporte actualizado correctamente en recepción');
+      } else {
+        toast.success('✅ Reporte enviado correctamente a recepción');
+      }
+
+    } catch (error) {
+      console.error('Error enviando reporte:', error);
+      toast.error('❌ Error al enviar el reporte: ' + sanitizeText(error.message));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  // Función auxiliar para calcular totales
+  const calcularTotalesDesdePedidos = (pedidosArray) => {
+    let totalEfectivo = 0;
+    let totalTarjeta = 0;
+    let totalRecargado = 0;
+    let totalTransferencia = 0;
+    let totalEventos = 0;
+    let totalEmpleados = 0;
+
+    pedidosArray.forEach(pedido => {
+      if (pedido.terminado) {
+        const totalLimpio = sanitizeNumber(pedido.total, true);
+        switch (pedido.metodo_pago) {
+          case 'efectivo':
+            totalEfectivo += totalLimpio;
+            break;
+          case 'tarjeta':
+            totalTarjeta += totalLimpio;
+            break;
+          case 'recargado':
+            totalRecargado += totalLimpio;
+            break;
+          case 'transferencia':
+            totalTransferencia += totalLimpio;
+            break;
+          case 'eventos':
+            totalEventos += totalLimpio;
+            break;
+          case 'empleados':
+            totalEmpleados += totalLimpio;
+            break;
+        }
+      }
     });
 
-    const { data, error } = await supabase
-      .from('reportes_enviados')
-      .upsert([reporteData], {
-        onConflict: 'fecha,turno',
-        ignoreDuplicates: false
-      })
-      .select();
-
-    if (error) throw error;
-
-    const esActualizacion = data && data[0] && data[0].id;
-    
-    if (esActualizacion) {
-      toast.success('✅ Reporte actualizado correctamente en recepción');
-    } else {
-      toast.success('✅ Reporte enviado correctamente a recepción');
-    }
-
-  } catch (error) {
-    console.error('Error enviando reporte:', error);
-    toast.error('❌ Error al enviar el reporte: ' + sanitizeText(error.message));
-  } finally {
-    setEnviando(false);
-  }
-};
-
-// ⬇️ Agrega esta función auxiliar para calcular totales
-const calcularTotalesDesdePedidos = (pedidosArray) => {
-  let totalEfectivo = 0;
-  let totalTarjeta = 0;
-  let totalRecargado = 0;
-  let totalEventos = 0;
-
-  pedidosArray.forEach(pedido => {
-    if (pedido.terminado) {
-      const totalLimpio = sanitizeNumber(pedido.total, true);
-      if (pedido.metodo_pago === 'efectivo') {
-        totalEfectivo += totalLimpio;
-      } else if (pedido.metodo_pago === 'tarjeta') {
-        totalTarjeta += totalLimpio;
-      } else if (pedido.metodo_pago === 'recargado') {
-        totalRecargado += totalLimpio;
-      } else if (pedido.metodo_pago === 'eventos') {
-        totalEventos += totalLimpio;
-      }
-    }
-  });
-
-  return { totalEfectivo, totalTarjeta, totalRecargado, totalEventos };
-};
+    return {
+      totalEfectivo,
+      totalTarjeta,
+      totalRecargado,
+      totalTransferencia,
+      totalEventos,
+      totalEmpleados
+    };
+  };
 
   // useEffect para suscripción a cambios
   useEffect(() => {
@@ -389,6 +453,11 @@ const calcularTotalesDesdePedidos = (pedidosArray) => {
             { event: "*", schema: "public", table: "pedidos_recargados" },
             () => fetchDatos()
           )
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "empleados_recargados" },
+            () => fetchDatos()
+          )
           .subscribe();
 
         return channel;
@@ -408,60 +477,79 @@ const calcularTotalesDesdePedidos = (pedidosArray) => {
   }, [visible]);
 
   // useEffect para guardado automático
-useEffect(() => {
-  const interval = setInterval(() => {
-    const now = new Date();
-    const hour = now.getHours();
-    const minutes = now.getMinutes();
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      const hour = now.getHours();
+      const minutes = now.getMinutes();
 
-    if ((hour === 13 && minutes === 59) || (hour === 21 && minutes === 59)) {
-      // Verificar si hay pedidos antes de enviar
-      const pedidosTerminadosActuales = pedidos.filter(pedido => pedido.terminado);
-      
-      if (pedidosTerminadosActuales.length > 0) {
-        enviarARecepcion();
-      } else {
+      if ((hour === 13 && minutes === 59) || (hour === 21 && minutes === 59)) {
+        const pedidosTerminadosActuales = pedidos.filter(pedido => pedido.terminado);
+
+        if (pedidosTerminadosActuales.length > 0) {
+          enviarARecepcion();
+        }
       }
-    }
-  }, 60 * 1000);
-  return () => clearInterval(interval);
-}, [pedidos]); 
+    }, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [pedidos]);
 
   // Calcular totales
   const calcularTotales = () => {
     let totalEfectivo = 0;
     let totalTarjeta = 0;
     let totalRecargado = 0;
+    let totalTransferencia = 0;
     let totalEventos = 0;
+    let totalEmpleados = 0;
 
     pedidos.forEach(pedido => {
       if (pedido.terminado) {
         const totalLimpio = sanitizeNumber(pedido.total, true);
-        if (pedido.metodo_pago === 'efectivo') {
-          totalEfectivo += totalLimpio;
-        } else if (pedido.metodo_pago === 'tarjeta') {
-          totalTarjeta += totalLimpio;
-        } else if (pedido.metodo_pago === 'recargado') {
-          totalRecargado += totalLimpio;
-        } else if (pedido.metodo_pago === 'eventos') {
-          totalEventos += totalLimpio;
+        switch (pedido.metodo_pago) {
+          case 'efectivo':
+            totalEfectivo += totalLimpio;
+            break;
+          case 'tarjeta':
+            totalTarjeta += totalLimpio;
+            break;
+          case 'recargado':
+            totalRecargado += totalLimpio;
+            break;
+          case 'transferencia':
+            totalTransferencia += totalLimpio;
+            break;
+          case 'eventos':
+            totalEventos += totalLimpio;
+            break;
+          case 'empleados':
+            totalEmpleados += totalLimpio;
+            break;
         }
       }
     });
 
-    return { 
-      totalEfectivo: sanitizeNumber(totalEfectivo, true), 
-      totalTarjeta: sanitizeNumber(totalTarjeta, true), 
-      totalRecargado: sanitizeNumber(totalRecargado, true), 
-      totalEventos: sanitizeNumber(totalEventos, true) 
+    return {
+      totalEfectivo: sanitizeNumber(totalEfectivo, true),
+      totalTarjeta: sanitizeNumber(totalTarjeta, true),
+      totalRecargado: sanitizeNumber(totalRecargado, true),
+      totalTransferencia: sanitizeNumber(totalTransferencia, true),
+      totalEventos: sanitizeNumber(totalEventos, true),
+      totalEmpleados: sanitizeNumber(totalEmpleados, true)
     };
   };
 
-  // ⬇️ TODOS LOS HOOKS DEBEN ESTAR ANTES DE ESTA LÍNEA ⬇️
   if (!visible) return null;
 
-  // Cálculos que dependen de estados (después del return condicional)
-  const { totalEfectivo, totalTarjeta, totalRecargado, totalEventos } = calcularTotales();
+  const {
+    totalEfectivo,
+    totalTarjeta,
+    totalRecargado,
+    totalTransferencia,
+    totalEventos,
+    totalEmpleados
+  } = calcularTotales();
+
   const { turno } = getTurnoRange();
   const fechaActual = new Date(new Date().getTime() - (6 * 60 * 60 * 1000)).toLocaleDateString('es-GT');
   const pedidosTerminados = pedidos.filter(pedido => pedido.terminado);
@@ -469,10 +557,10 @@ useEffect(() => {
   return (
     <>
       <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 text-white w-[95%] max-w-6xl max-h-[80vh] overflow-y-auto rounded-2xl shadow-2xl p-6">
+        <div className="bg-gradient-to-br from-gray-800 to-gray-900 text-white w-[95%] max-w-7xl max-h-[80vh] overflow-y-auto rounded-2xl shadow-2xl p-6">
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-yellow-400 mb-2">REPORTE DE VENTAS</h2>
-            <div className="grid grid-cols-3 gap-4 text-sm">           
+            <div className="grid grid-cols-3 gap-4 text-sm">
               <div className="bg-gray-700 p-2 rounded">
                 <span className="font-semibold text-yellow-300">Generado por:</span> {sanitizeText(meseroActual)}
               </div>
@@ -499,63 +587,78 @@ useEffect(() => {
                     <th className="p-3 border border-gray-600 font-semibold text-green-300">Efectivo</th>
                     <th className="p-3 border border-gray-600 font-semibold text-blue-300">Tarjeta</th>
                     <th className="p-3 border border-gray-600 font-semibold text-purple-300">Recargado</th>
+                    <th className="p-3 border border-gray-600 font-semibold text-amber-300">Transferencia</th>
                     <th className="p-3 border border-gray-600 font-semibold text-yellow-300">Eventos</th>
                     <th className="p-3 border border-gray-600 font-semibold text-orange-300">Habitación</th>
-                    <th className="p-3 border border-gray-600 font-semibold text-pink-300">Mesero</th>
-                    <th className="p-3 border border-gray-600 font-semibold text-cyan-300">Detalle</th>
+                    <th className="p-3 border border-gray-600 font-semibold text-pink-300">Empleados</th>
+                    <th className="p-3 border border-gray-600 font-semibold text-cyan-300">Mesero</th>
+                    <th className="p-3 border border-gray-600 font-semibold text-emerald-300">Detalle</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pedidosTerminados.map((pedido) => {
                     const infoRecargado = infoRecargados[pedido.id];
+                    const infoEmpleado = infoEmpleados[pedido.id];
                     const fueRecargado = !!infoRecargado;
+                    const fueEmpleado = !!infoEmpleado;
 
                     return (
                       <tr key={pedido.id} className="hover:bg-gray-700 border-b border-gray-600">
                         <td className="p-2 border border-gray-600 text-center text-white">{sanitizeText(pedido.id)}</td>
-                        
+
                         <td className="p-2 border border-gray-600 text-center">
-                          {pedido.metodo_pago === 'efectivo' ? 
-                            <span className="text-green-300 font-medium">Q{sanitizeNumber(pedido.total, true).toFixed(2)}</span> : 
-                            <span className="text-gray-400">-</span>
-                          }
-                        </td>
-                        
-                        <td className="p-2 border border-gray-600 text-center">
-                          {pedido.metodo_pago === 'tarjeta' ? 
-                            <span className="text-blue-300 font-medium">Q{sanitizeNumber(pedido.total, true).toFixed(2)}</span> : 
-                            <span className="text-gray-400">-</span>
-                          }
-                        </td>
-                        
-                        <td className="p-2 border border-gray-600 text-center">
-                          {pedido.metodo_pago === 'recargado' ? 
-                            <span className="text-purple-300 font-medium">Q{sanitizeNumber(pedido.total, true).toFixed(2)}</span> : 
+                          {pedido.metodo_pago === 'efectivo' ?
+                            <span className="text-green-300 font-medium">Q{sanitizeNumber(pedido.total, true).toFixed(2)}</span> :
                             <span className="text-gray-400">-</span>
                           }
                         </td>
 
                         <td className="p-2 border border-gray-600 text-center">
-                          {pedido.metodo_pago === 'eventos' ? 
-                            <span className="text-yellow-300 font-medium">Q{sanitizeNumber(pedido.total, true).toFixed(2)}</span> : 
+                          {pedido.metodo_pago === 'tarjeta' ?
+                            <span className="text-blue-300 font-medium">Q{sanitizeNumber(pedido.total, true).toFixed(2)}</span> :
                             <span className="text-gray-400">-</span>
                           }
                         </td>
-                        
+
+                        <td className="p-2 border border-gray-600 text-center">
+                          {pedido.metodo_pago === 'recargado' ?
+                            <span className="text-purple-300 font-medium">Q{sanitizeNumber(pedido.total, true).toFixed(2)}</span> :
+                            <span className="text-gray-400">-</span>
+                          }
+                        </td>
+
+                        <td className="p-2 border border-gray-600 text-center">
+                          {pedido.metodo_pago === 'transferencia' ?
+                            <span className="text-amber-300 font-medium">Q{sanitizeNumber(pedido.total, true).toFixed(2)}</span> :
+                            <span className="text-gray-400">-</span>
+                          }
+                        </td>
+
+                        <td className="p-2 border border-gray-600 text-center">
+                          {pedido.metodo_pago === 'eventos' ?
+                            <span className="text-yellow-300 font-medium">Q{sanitizeNumber(pedido.total, true).toFixed(2)}</span> :
+                            <span className="text-gray-400">-</span>
+                          }
+                        </td>
+
                         <td className="p-2 border border-gray-600 text-center">
                           {fueRecargado ? sanitizeText(infoRecargado.habitacion) : <span className="text-gray-400">-</span>}
                         </td>
-                        
+
                         <td className="p-2 border border-gray-600 text-center">
-                          {pedido.metodo_pago === 'recargado'
-                            ? infoRecargados[pedido.id]?.mesero || '-'
-                            : sanitizeText(pedido.mesero)}
+                          {fueEmpleado ? sanitizeText(infoEmpleado.empleado) : <span className="text-gray-400">-</span>}
                         </td>
-                        
+
                         <td className="p-2 border border-gray-600 text-center">
-                          <button 
+                          {fueRecargado ? sanitizeText(infoRecargado.mesero) :
+                            fueEmpleado ? sanitizeText(infoEmpleado.mesero) :
+                              sanitizeText(pedido.mesero)}
+                        </td>
+
+                        <td className="p-2 border border-gray-600 text-center">
+                          <button
                             onClick={() => mostrarDetalle(pedido)}
-                            className="bg-cyan-600 text-white px-3 py-1 rounded hover:bg-cyan-500 transition"
+                            className="bg-emerald-600 text-white px-3 py-1 rounded hover:bg-emerald-500 transition"
                           >
                             Ver Items
                           </button>
@@ -563,7 +666,7 @@ useEffect(() => {
                       </tr>
                     );
                   })}
-                  
+
                   <tr className="bg-gray-700 font-bold">
                     <td className="p-3 border border-gray-600 text-center text-yellow-300">TOTALES</td>
                     <td className="p-3 border border-gray-600 text-center text-green-300">
@@ -575,27 +678,33 @@ useEffect(() => {
                     <td className="p-3 border border-gray-600 text-center text-purple-300">
                       Q{sanitizeNumber(totalRecargado, true).toFixed(2)}
                     </td>
+                    <td className="p-3 border border-gray-600 text-center text-amber-300">
+                      Q{sanitizeNumber(totalTransferencia, true).toFixed(2)}
+                    </td>
                     <td className="p-3 border border-gray-600 text-center text-yellow-300">
                       Q{sanitizeNumber(totalEventos, true).toFixed(2)}
                     </td>
                     <td className="p-3 border border-gray-600 text-center text-orange-300">-</td>
-                    <td className="p-3 border border-gray-600 text-center text-pink-300">-</td>
+                    <td className="p-3 border border-gray-600 text-center text-pink-300">
+                      Q{sanitizeNumber(totalEmpleados, true).toFixed(2)}
+                    </td>
+                    <td className="p-3 border border-gray-600 text-center text-cyan-300">-</td>
                     <td className="p-3 border border-gray-600 text-center">-</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           )}
-          
+
           <div className="flex justify-end gap-3 mt-6">
-            <button 
+            <button
               onClick={enviarARecepcion}
               disabled={enviando || pedidosTerminados.length === 0}
               className="bg-blue-500 text-white px-6 py-2 rounded font-bold hover:bg-blue-400 disabled:bg-gray-400 transition"
             >
               {enviando ? 'Enviando...' : '📤 Enviar a Recepción'}
             </button>
-            <button 
+            <button
               onClick={onClose}
               className="bg-yellow-500 text-gray-900 px-6 py-2 rounded font-bold hover:bg-yellow-400 transition"
             >
@@ -613,20 +722,23 @@ useEffect(() => {
               <h3 className="text-xl font-bold text-yellow-400">
                 Detalle del Pedido #{sanitizeText(modalDetalle.pedido.id)}
               </h3>
-              <button 
+              <button
                 onClick={cerrarModalDetalle}
                 className="text-gray-400 hover:text-white text-2xl"
               >
                 &times;
               </button>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div className="bg-gray-700 p-3 rounded">
                 <span className="font-semibold text-yellow-300">Mesero:</span> {sanitizeText(modalDetalle.pedido.mesero)}
               </div>
+              <div className="bg-gray-700 p-3 rounded">
+                <span className="font-semibold text-yellow-300">Método Pago:</span> {sanitizeText(modalDetalle.pedido.metodo_pago)}
+              </div>
             </div>
-            
+
             <div className="mb-4">
               <h4 className="font-bold text-yellow-300 mb-2">Items del Pedido:</h4>
               <div className="bg-gray-700 p-4 rounded max-h-60 overflow-y-auto">
@@ -635,7 +747,7 @@ useEffect(() => {
                 </pre>
               </div>
             </div>
-            
+
             <div className="flex justify-end">
               <button
                 onClick={cerrarModalDetalle}
