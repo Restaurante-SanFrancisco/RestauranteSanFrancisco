@@ -212,7 +212,6 @@ export default function ModalReporte({ visible, onClose }) {
     setEnviando(true);
     try {
       const { fecha: fechaCorrecta, hora: horaCorrecta } = getFechaHoraGuatemala();
-
       const { turno: turnoActual } = getTurnoRange();
 
       const meseroLimpio = sanitizeText(meseroActual);
@@ -345,27 +344,65 @@ export default function ModalReporte({ visible, onClose }) {
         formato_especial: true,
       });
 
-      const { data, error } = await supabase
+      // buscar si ya existe un reporte para esta fecha y turno
+      const { data: reporteExistente, error: errorBusqueda } = await supabase
         .from('reportes_enviados')
-        .upsert([reporteData], {
-          onConflict: 'fecha,turno',
-          ignoreDuplicates: false
-        })
-        .select();
+        .select('id, fecha, turno')
+        .eq('fecha', fechaCorrecta)
+        .eq('turno', turnoLimpio)
+        .maybeSingle();
 
-      if (error) throw error;
+      console.log("🔍 Búsqueda de reporte existente:", {
+        fecha: fechaCorrecta,
+        turno: turnoLimpio,
+        encontrado: !!reporteExistente,
+        idExistente: reporteExistente?.id
+      });
 
-      const esActualizacion = data && data[0] && data[0].id;
+      let resultado;
+      let esActualizacion = false;
+
+      if (reporteExistente) {
+        //ACTUALIZAR el reporte existente 
+        console.log("🔄 ACTUALIZANDO reporte existente ID:", reporteExistente.id);
+
+        const { data, error } = await supabase
+          .from('reportes_enviados')
+          .update(reporteData)
+          .eq('id', reporteExistente.id)
+          .select();
+
+        if (error) throw error;
+
+        resultado = data;
+        esActualizacion = true;
+        console.log("✅ Reporte ACTUALIZADO - ID:", reporteExistente.id);
+
+      } else {
+        // CREAR NUEVO reporte (solo si no existe)
+        console.log("🆕 CREANDO NUEVO reporte");
+
+        const { data, error } = await supabase
+          .from('reportes_enviados')
+          .insert([reporteData])
+          .select();
+
+        if (error) throw error;
+
+        resultado = data;
+        esActualizacion = false;
+        console.log("✅ NUEVO reporte CREADO - ID:", data[0]?.id);
+      }
 
       if (esActualizacion) {
-        toast.success('✅ Reporte actualizado correctamente en recepción');
+        toast.success(`✅ Reporte #${reporteExistente.id} actualizado correctamente`);
       } else {
-        toast.success('✅ Reporte enviado correctamente a recepción');
+        toast.success(`✅ Reporte #${resultado[0]?.id} enviado correctamente a recepción`);
       }
 
     } catch (error) {
       console.error('Error enviando reporte:', error);
-      toast.error('❌ Error al enviar el reporte: ' + sanitizeText(error.message));
+      toast.error('Error al enviar el reporte: ' + sanitizeText(error.message));
     } finally {
       setEnviando(false);
     }
