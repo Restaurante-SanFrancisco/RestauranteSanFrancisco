@@ -268,17 +268,17 @@ function AdministrarUsuarios() {
       {/* Barra superior tipo "header" pero integrada */}
       <div className="flex items-center justify-between px-10 py-8">
         <button
-          onClick={() => navigate("/recepcion")}
+          onClick={() => navigate("/recargados")}
           className="flex items-center text-emerald-300 hover:text-white transition-colors"
         >
           <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M9.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L7.414 9H15a1 1 0 110 2H7.414l2.293 2.293a1 1 0 010 1.414z" clipRule="evenodd" />
           </svg>
-          Volver a Recepción
+          Volver
         </button>
         <h2 className="text-3xl font-extrabold text-white tracking-tight text-center flex-1 drop-shadow-lg">
           Administrar Usuarios
-        </h2>
+        </h2>|
         <img src="/LogoBlanco.png" alt="Logo Restaurante" className="w-36 h-20 object-contain drop-shadow" />
       </div>
 
@@ -324,6 +324,7 @@ function AdministrarUsuarios() {
               <option>Recepcion</option>
               <option>Mesero</option>
               <option>Cocina</option>
+              <option>Administracion</option>
             </select>
             <button
               onClick={guardarUsuario}
