@@ -46,7 +46,7 @@ function App() {
         <Route 
           path="/usuarios" 
           element={
-            <ProtectedRoute allowedRoles={['recepcion']}> 
+            <ProtectedRoute allowedRoles={['administracion']}> 
               <AdministrarUsuarios />
             </ProtectedRoute>
           } 
@@ -54,7 +54,7 @@ function App() {
         <Route 
           path="/platos" 
           element={
-            <ProtectedRoute allowedRoles={['recepcion']}> 
+            <ProtectedRoute allowedRoles={['administracion']}> 
               <AdministracionPlatos />
             </ProtectedRoute>
           } 
@@ -62,7 +62,7 @@ function App() {
         <Route 
           path="/recargados" 
           element={
-            <ProtectedRoute allowedRoles={['recepcion']}> 
+            <ProtectedRoute allowedRoles={['administracion']}> 
               <Recargados />
             </ProtectedRoute>
           } 
