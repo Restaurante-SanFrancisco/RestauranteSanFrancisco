@@ -258,27 +258,53 @@ function Recargados() {
         >
             {/* Header */}
             <div className="flex items-center justify-between px-6 pt-6 pb-4">
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={() => navigate("/recepcion")}
-                        className="flex items-center text-emerald-300 hover:text-white transition-colors font-medium"
-                    >
-                        <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M9.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L7.414 9H15a1 1 0 110 2H7.414l2.293 2.293a1 1 0 010 1.414z" clipRule="evenodd" />
-                        </svg>
-                        Volver a Recepción
-                    </button>
-                </div>
-
-                <h1 className="text-3xl font-extrabold text-purple-300 tracking-tight text-center drop-shadow-lg flex-1 text-center">
-                    Recargados
-                </h1>
-
                 <img
                     src="/LogoBlanco.png"
                     alt="Logo Restaurante"
                     className="w-36 h-20 object-contain drop-shadow"
                 />
+                
+
+                <h1 className="text-3xl font-extrabold text-purple-300 tracking-tight text-center drop-shadow-lg flex-1 text-center">
+                    Recargados
+                </h1>
+
+                <div className="flex items-center gap-4">
+                    <button
+                    onClick={() => navigate("/usuarios")}
+                    className="flex items-center text-emerald-300 hover:text-white transition-colors font-medium"
+                >
+                    Administrar Usuarios
+                </button>
+
+                <button
+                    onClick={() => navigate("/platos")}
+                    className="flex items-center text-emerald-300 hover:text-white transition-colors font-medium"
+                >
+                    Administrar Platos
+                </button>
+                </div>
+
+                <button
+            onClick={handleLogout}
+            title="Cerrar sesión"
+            className="text-white hover:text-red-400 transition p-1 rounded"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"
+              />
+            </svg>
+          </button>
             </div>
 
             <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6">
