@@ -22,7 +22,7 @@ const configReportes = {
   ],
   ALLOWED_ATTR: [
     'class', 'style', 'border', 'cellpadding', 'cellspacing', 'width',
-    'align', 'id' // <-- Permitir 'id' y 'align' para tablas y divs
+    'align', 'id'
   ],
   ALLOW_STYLE: true,
   FORBID_TAGS: ['script', 'iframe', 'link', 'meta', 'form', 'base'],
@@ -75,9 +75,22 @@ DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
 // =============================
 
 // Texto simple
-export const sanitizeText = (text) => {
-  if (!text) return '';
-  return DOMPurify.sanitize(String(text), configBasico).trim();
+export const sanitizeText = (text, options = {}) => {
+  const { collapseSpaces = false, trim = false } = options;
+  if (text === null || text === undefined) return '';
+  // Convertir a string y sanitizar
+  let sanitized = DOMPurify.sanitize(String(text), configBasico);
+
+  // Normalizar NBSP a espacio regular
+  sanitized = sanitized.replace(/\u00A0/g, ' ');
+
+  // Opcional: colapsar múltiples espacios en uno solo si el caller lo solicita
+  if (collapseSpaces) {
+    sanitized = sanitized.replace(/\s+/g, ' ');
+  }
+
+  // Si caller solicita recortar, recortar; por defecto NO recorta (permite espacios mientras escribe)
+  return trim ? sanitized.trim() : sanitized;
 };
 
 // Números (precios con decimales o enteros)
@@ -112,10 +125,8 @@ export const sanitizeHtml = (html) => {
 };
 
 // HTML para reportes (con estilos filtrados)
-// CORREGIDO: Permite estilos y atributos necesarios para el diseño del reporte
 export const sanitizeHtmlReportes = (html) => {
   if (!html) return '';
-  // No uses configBasico aquí, usa configReportes para mantener el diseño
   return DOMPurify.sanitize(String(html), configReportes);
 };
 
