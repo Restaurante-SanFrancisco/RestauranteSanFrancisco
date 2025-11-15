@@ -63,6 +63,9 @@ function LoginForm() {
       case "Cocina":
         navigate("/cocina");
         break;
+        case "Administracion":
+        navigate("/recargados");
+        break;
       default:
         setError("Rol no reconocido");
     }
@@ -133,6 +136,4 @@ function LoginForm() {
   );
 }
 
-
 export default LoginForm;
-
