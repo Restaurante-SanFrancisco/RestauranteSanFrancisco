@@ -852,13 +852,13 @@ export default function AdministracionPlatos() {
       {/* BOTÓN PARA REGRESAR A RECEPCIÓN - Con React Router */}
       <div className="mb-4">
         <button
-          onClick={() => navigate("/recepcion")}
+          onClick={() => navigate("/recargados")}
           className="flex items-center text-emerald-300 hover:text-white transition-colors"
         >
           <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M9.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L7.414 9H15a1 1 0 110 2H7.414l2.293 2.293a1 1 0 010 1.414z" clipRule="evenodd" />
           </svg>
-          Volver a Recepción
+          Volver
         </button>
       </div>
       
@@ -1537,3 +1537,4 @@ function RowPlatillo({ p, categoria, onEdit, onDelete, expanded, onToggle, fetch
     </>
   );
 }
+
