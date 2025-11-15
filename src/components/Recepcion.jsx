@@ -526,12 +526,66 @@ function Recepcion() {
   const prevRecargados = useRef(0);
   const prevFacturas = useRef(0);
 
+  // Unread / badge in title
+  const [unreadCount, setUnreadCount] = useState(0);
+  const seenRecargados = useRef(0);
+  const seenFacturas = useRef(0);
+  const defaultTitle = useRef(document.title);
+
+  // Inicializar contadores "vistos" al montar/cargar datos
+  useEffect(() => {
+    seenRecargados.current = pedidosRecargados.length;
+    seenFacturas.current = pedidosFacturar.length;
+  }, []); // solo al montar
+
+  // Actualiza título con badge
+  const updateDocumentTitle = (count) => {
+    if (count > 0) {
+      document.title = `(${count}) ${defaultTitle.current}`;
+    } else {
+      document.title = defaultTitle.current;
+    }
+  };
+
+  // Cuando la pestaña se vuelve visible, marcar todo como visto y limpiar badge
+  useEffect(() => {
+    const onVisible = () => {
+      seenRecargados.current = pedidosRecargados.length;
+      seenFacturas.current = pedidosFacturar.length;
+      setUnreadCount(0);
+      updateDocumentTitle(0);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") onVisible();
+    };
+
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [pedidosRecargados.length, pedidosFacturar.length]);
+
   useEffect(() => {
     if (pedidosRecargados.length > prevRecargados.current) {
       mostrarNotificacion(
         "Nuevo pedido recargado",
         "¡Hay un nuevo pedido recargado pendiente de cobro!"
       );
+      // si la pestaña NO está visible, aumentar contador unread
+      if (document.visibilityState !== "visible") {
+        const delta = Math.max(0, pedidosRecargados.length - seenRecargados.current);
+        if (delta > 0) {
+          setUnreadCount((c) => {
+            const n = c + delta;
+            updateDocumentTitle(n);
+            return n;
+          });
+        }
+      }
     }
     prevRecargados.current = pedidosRecargados.length;
   }, [pedidosRecargados]);
@@ -542,6 +596,17 @@ function Recepcion() {
         "Nuevo pedido a facturar",
         "¡Hay un nuevo pedido pendiente de facturación!"
       );
+      // si la pestaña NO está visible, aumentar contador unread
+      if (document.visibilityState !== "visible") {
+        const delta = Math.max(0, pedidosFacturar.length - seenFacturas.current);
+        if (delta > 0) {
+          setUnreadCount((c) => {
+            const n = c + delta;
+            updateDocumentTitle(n);
+            return n;
+          });
+        }
+      }
     }
     prevFacturas.current = pedidosFacturar.length;
   }, [pedidosFacturar]);
@@ -576,27 +641,6 @@ function Recepcion() {
 
         {/* Botones de navegación - ACTUALIZADO */}
         <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate("/recargados")}
-            className="flex items-center text-emerald-300 hover:text-white transition-colors font-medium"
-          >
-            Recargados
-          </button>
-
-          <button
-            onClick={() => navigate("/usuarios")}
-            className="flex items-center text-emerald-300 hover:text-white transition-colors font-medium"
-          >
-            Administrar Usuarios
-          </button>
-
-          <button
-            onClick={() => navigate("/platos")}
-            className="flex items-center text-emerald-300 hover:text-white transition-colors font-medium"
-          >
-            Administrar Platos
-          </button>
-
           <button
             onClick={handleLogout}
             title="Cerrar sesión"
@@ -1056,4 +1100,3 @@ function Recepcion() {
 }
 
 export default Recepcion;
-
