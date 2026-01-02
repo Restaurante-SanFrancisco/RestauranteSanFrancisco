@@ -4,19 +4,18 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ],
+  {
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://restaurante-san-francisco.vercel.app" 
+          "value": "https://restaurante-san-francisco.vercel.app"
         },
-
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; frame-ancestors 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; font-src 'self' data:; object-src 'none'; base-uri 'self';"
+          "value": "default-src 'self'; frame-ancestors 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co wss://*.supabase.co;"
         },
         {
           "key": "Strict-Transport-Security",
@@ -50,3 +49,4 @@
     }
   ]
 }
+
