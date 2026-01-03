@@ -15,8 +15,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; frame-ancestors 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co wss://*.supabase.co;"
-        },
+          "value": "default-src 'self'; frame-ancestors 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co wss://*.supabase.co;"},
         {
           "key": "Strict-Transport-Security",
           "value": "max-age=63072000; includeSubDomains; preload"
