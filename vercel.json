@@ -4,7 +4,7 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  {
+  ],
   "headers": [
     {
       "source": "/(.*)",
@@ -15,13 +15,14 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; frame-ancestors 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co wss://*.supabase.co;"},
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self';"
+        },
         {
           "key": "Strict-Transport-Security",
           "value": "max-age=63072000; includeSubDomains; preload"
         },
         {
-          "key": "Cross-Origin-Opener-Policy",
+          "key": "Cross-Origin-Opener-Policy", 
           "value": "same-origin"
         },
         {
@@ -48,4 +49,3 @@
     }
   ]
 }
-
